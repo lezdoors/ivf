@@ -7,12 +7,17 @@ import {
   CheckCircle2,
   ChevronRight,
   Download,
+  FileText,
   HeartPulse,
   LockKeyhole,
   Moon,
+  PhoneCall,
+  Pill,
   ShieldCheck,
   Sparkles,
   SunMedium,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 import './styles.css';
 
@@ -51,8 +56,19 @@ type CycleDay = {
   kind: CycleDayKind;
 };
 
+type MedicationReminder = {
+  id: string;
+  name: string;
+  dose: string;
+  time: string;
+  status: 'next' | 'done';
+};
+
 const STORAGE_KEY = 'nina-ivf-journal-v1';
 const CYCLE_STORAGE_KEY = 'nina-cycle-profile-v1';
+const MEDICATION_STORAGE_KEY = 'nina-medication-reminders-v1';
+const ACCESS_STORAGE_KEY = 'nina-vault-unlocked-v1';
+const PASSCODE_STORAGE_KEY = 'nina-vault-passcode-v1';
 
 const feelings: { id: Feeling; label: string; tone: string; color: string }[] = [
   { id: 'soft', label: 'Soft', tone: 'Gentle, protected, moving slowly', color: '#f6b7c6' },
@@ -137,6 +153,30 @@ function loadCycleProfile(): CycleProfile {
   return { periodStart: todayISO(), cycleLength: 28, lutealLength: 14 };
 }
 
+function loadMedicationReminders(): MedicationReminder[] {
+  try {
+    const raw = localStorage.getItem(MEDICATION_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Keep defaults if local storage is unavailable.
+  }
+  return [
+    { id: 'prenatal', name: 'Prenatal vitamin', dose: '1 tablet', time: '08:00', status: 'next' },
+    { id: 'coq10', name: 'CoQ10', dose: 'With breakfast', time: '09:00', status: 'next' },
+    { id: 'injection', name: 'Injection window', dose: 'Confirm protocol', time: '20:30', status: 'next' },
+  ];
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function buildCycleDays(profile: CycleProfile): CycleDay[] {
   const ovulationDay = Math.max(8, profile.cycleLength - profile.lutealLength);
   return Array.from({ length: profile.cycleLength }, (_, index) => {
@@ -155,6 +195,13 @@ function App() {
   const [entries, setEntries] = useState<JournalEntry[]>(loadEntries);
   const [entry, setEntry] = useState<JournalEntry>(() => entries[0] ?? emptyEntry());
   const [cycleProfile, setCycleProfile] = useState<CycleProfile>(loadCycleProfile);
+  const [medications, setMedications] = useState<MedicationReminder[]>(loadMedicationReminders);
+  const [accessCode, setAccessCode] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const [unlocked, setUnlocked] = useState(() => {
+    const qaPreview = import.meta.env.DEV && new URLSearchParams(window.location.search).has('qa');
+    return qaPreview || localStorage.getItem(ACCESS_STORAGE_KEY) === 'true';
+  });
   const [savedPulse, setSavedPulse] = useState(false);
 
   useEffect(() => {
@@ -164,6 +211,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CYCLE_STORAGE_KEY, JSON.stringify(cycleProfile));
   }, [cycleProfile]);
+
+  useEffect(() => {
+    localStorage.setItem(MEDICATION_STORAGE_KEY, JSON.stringify(medications));
+  }, [medications]);
 
   const selectedFeeling = feelings.find((item) => item.id === entry.feeling) ?? feelings[0];
   const completedDays = useMemo(() => new Set(entries.map((item) => item.date)).size, [entries]);
@@ -177,6 +228,11 @@ function App() {
   const ovulationDay = Math.max(8, cycleProfile.cycleLength - cycleProfile.lutealLength);
   const nextOvulationDate = addDays(cycleProfile.periodStart, ovulationDay - 1);
   const selectedCycleDay = cycleDays.find((day) => day.day === cycleDayNumber) ?? cycleDays[0];
+  const energyAverage = entries.length > 0 ? Math.round((entries.reduce((sum, item) => sum + item.energy, 0) / entries.length) * 10) / 10 : entry.energy;
+  const heavierDays = entries.filter((item) => item.feeling === 'heavy' || item.feeling === 'anxious').length;
+  const gratitudeCount = entries.filter((item) => item.gratitude.trim()).length;
+  const completedMeds = medications.filter((item) => item.status === 'done').length;
+
   const cycleMessage = selectedCycleDay.kind === 'ovulation'
     ? 'Ovulation signal day: make the app feel alive, not clinical.'
     : selectedCycleDay.kind === 'fertile'
@@ -186,6 +242,62 @@ function App() {
         : selectedCycleDay.kind === 'test'
           ? 'Test horizon: protect the heart before the result.'
           : 'Quiet tracking day: keep the streak gentle and useful.';
+
+  const unlockVault = (event: React.FormEvent) => {
+    event.preventDefault();
+    const savedPasscode = localStorage.getItem(PASSCODE_STORAGE_KEY);
+    const candidate = accessCode.trim();
+
+    if (!savedPasscode) {
+      if (candidate.length < 4) {
+        setAccessError('Choose a local passcode with at least 4 characters.');
+        return;
+      }
+      localStorage.setItem(PASSCODE_STORAGE_KEY, candidate);
+      localStorage.setItem(ACCESS_STORAGE_KEY, 'true');
+      setUnlocked(true);
+      setAccessError('');
+      return;
+    }
+
+    if (candidate === savedPasscode) {
+      localStorage.setItem(ACCESS_STORAGE_KEY, 'true');
+      setUnlocked(true);
+      setAccessError('');
+      return;
+    }
+    setAccessError('That passcode does not match this browser vault.');
+  };
+
+  const toggleMedication = (id: string) => {
+    setMedications((current) => current.map((item) => item.id === id ? { ...item, status: item.status === 'done' ? 'next' : 'done' } : item));
+  };
+
+  const exportDoctorBrief = () => {
+    const latest = entries[0] ?? entry;
+    const brief = [
+      'Nina IVF visit brief',
+      `Generated: ${todayISO()}`,
+      '',
+      `Current phase: ${latest.phase}`,
+      `Cycle day: ${cycleDayNumber}`,
+      `Next ovulation estimate: ${compactDate(nextOvulationDate)}`,
+      `Energy average: ${energyAverage}/10`,
+      `Anxious/heavy days logged: ${heavierDays}`,
+      '',
+      'Latest body notes:',
+      latest.bodyNotes || 'No body notes logged yet.',
+      '',
+      'Medication reminders:',
+      ...medications.map((med) => `- ${med.time} · ${med.name} · ${med.dose} · ${med.status}`),
+      '',
+      'Questions for care team:',
+      '- Are current symptoms expected for this phase?',
+      '- Does anything change before the next appointment?',
+      '- Should medication timing or dose be adjusted?',
+    ].join('\n');
+    downloadTextFile(`nina-doctor-brief-${todayISO()}.txt`, brief);
+  };
 
   const saveEntry = () => {
     setEntries((current) => {
@@ -199,7 +311,7 @@ function App() {
   const startNewDay = () => setEntry({ ...emptyEntry(), cycleDay: `Cycle day ${cycleDayNumber}` });
 
   const exportJournal = () => {
-    const payload = JSON.stringify({ cycleProfile, entries }, null, 2);
+    const payload = JSON.stringify({ cycleProfile, medications, entries }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -209,12 +321,31 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
+  if (!unlocked) {
+    return (
+      <main className="access-shell">
+        <section className="access-card">
+          <img src="/app-icon.png" alt="Nina app icon" />
+          <span className="eyebrow"><LockKeyhole size={16} /> Private IVF vault</span>
+          <h1>Open the calm space Ryan made for Nina.</h1>
+          <p>A protected daily companion for cycle clarity, medication reminders, doctor notes, and the private journal between appointments.</p>
+          <form onSubmit={unlockVault}>
+            <label>Local passcode<input autoFocus type="password" value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="Create or enter passcode" /></label>
+            {accessError && <small className="access-error">{accessError}</small>}
+            <button className="primary-button wide" type="submit">Unlock Nina</button>
+          </form>
+          <small className="privacy-note">Local-first: entries stay in this browser unless exported.</small>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main>
       <nav className="topbar" aria-label="Nina app navigation">
-        <div className="brand-mark"><span>N</span> Nina</div>
-        <div className="nav-links"><a href="#journal">Journal</a><a href="#cycle">Cycle</a><a href="#care">Care plan</a><a href="#insights">Insights</a></div>
-        <button className="nav-cta"><LockKeyhole size={15} /> Private vault</button>
+        <div className="brand-mark"><img src="/app-icon.png" alt="" /><span>N</span> Nina</div>
+        <div className="nav-links"><a href="#journal">Journal</a><a href="#cycle">Cycle</a><a href="#care">Care plan</a><a href="#additions">Additions</a><a href="#insights">Insights</a></div>
+        <button className="nav-cta" onClick={() => { localStorage.removeItem(ACCESS_STORAGE_KEY); setUnlocked(false); }}><LockKeyhole size={15} /> Lock vault</button>
       </nav>
 
       <section className="hero-section">
@@ -284,6 +415,56 @@ function App() {
           <span><i className="fertile-dot" /> Fertile window</span>
           <span><i className="ovulation-dot" /> Ovulation pulse</span>
           <span><i className="implantation-dot" /> Implantation watch</span>
+        </div>
+      </section>
+
+
+      <section className="addition-suite" id="additions">
+        <div className="panel-heading addition-heading">
+          <span><Sparkles size={16} /> New additions</span>
+          <h2>The app now acts like a calm IVF command center, not just a pretty journal.</h2>
+        </div>
+        <div className="addition-grid">
+          <article className="addition-card medication-card">
+            <div className="addition-title"><Pill size={18} /><strong>Medication runway</strong></div>
+            <p>Soft reminders for supplements, injection windows, and protocol checks.</p>
+            <div className="med-list">
+              {medications.map((med) => (
+                <button key={med.id} className={med.status === 'done' ? 'med-row done' : 'med-row'} onClick={() => toggleMedication(med.id)}>
+                  <span>{med.time}</span>
+                  <strong>{med.name}</strong>
+                  <small>{med.dose}</small>
+                </button>
+              ))}
+            </div>
+            <small>{completedMeds}/{medications.length} complete today</small>
+          </article>
+
+          <article className="addition-card trend-card">
+            <div className="addition-title"><TrendingUp size={18} /><strong>Symptom + mood trends</strong></div>
+            <p>Quick signal view for patterns worth bringing to the care team.</p>
+            <div className="trend-bars">
+              <div><span style={{ width: `${Math.min(100, energyAverage * 10)}%` }} /><strong>Energy avg {energyAverage}/10</strong></div>
+              <div><span style={{ width: `${entries.length ? Math.min(100, (heavierDays / entries.length) * 100) : 8}%` }} /><strong>{heavierDays} heavy/anxious days</strong></div>
+              <div><span style={{ width: `${entries.length ? Math.min(100, (gratitudeCount / entries.length) * 100) : 8}%` }} /><strong>{gratitudeCount} gratitude notes</strong></div>
+            </div>
+          </article>
+
+          <article className="addition-card export-card">
+            <div className="addition-title"><FileText size={18} /><strong>Doctor-ready export</strong></div>
+            <p>Creates a plain-English visit brief: phase, cycle context, symptoms, meds, and questions.</p>
+            <button className="secondary-button wide" onClick={exportDoctorBrief}><Download size={16} /> Export visit brief</button>
+          </article>
+
+          <article className="addition-card partner-card">
+            <div className="addition-title"><Users size={18} /><strong>Partner support cue</strong></div>
+            <p>Ryan’s daily role is visible: reduce mental load, ask the right questions, protect the calm.</p>
+            <div className="partner-actions">
+              <span><PhoneCall size={15} /> Confirm next appointment</span>
+              <span><ShieldCheck size={15} /> Screenshot authorization docs</span>
+              <span><Moon size={15} /> No symptom spirals after 9pm</span>
+            </div>
+          </article>
         </div>
       </section>
 

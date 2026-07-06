@@ -21,6 +21,11 @@ Nina is built around two jobs:
 - Gentle daily prompts and affirmations
 - Recent-entry timeline
 - JSON export for backup / future migration
+- Private access screen with app icon and lockable vault
+- Medication reminder runway with done / next states
+- Doctor-ready plain-text visit brief export
+- Partner support cues for appointments, authorization docs, and calm routines
+- Symptom / mood trend signals from journal history
 - Local-first privacy promise
 
 ## Commercialisation path
