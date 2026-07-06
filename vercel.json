@@ -1,8 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
-  "functions": {
-    "api/*.ts": { "runtime": "@vercel/node@5" }
-  }
+  "outputDirectory": "dist"
 }
