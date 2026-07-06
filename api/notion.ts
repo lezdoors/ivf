@@ -4,7 +4,7 @@
 //   GET    /api/notion?db=journal[&sort=Date&dir=desc]   -> list rows
 //   POST   /api/notion?db=journal   body { fields: {...} }  -> create row
 //   PATCH  /api/notion?id=<pageId>&db=journal  body { fields } -> update row
-import { DB, checkPass, notion, rowFromPage, buildProperties } from './_lib';
+import { DB, checkPass, notion, rowFromPage, buildProperties } from '../lib/ivf';
 
 export default async function handler(req: any, res: any) {
   if (!checkPass(req, res)) return;

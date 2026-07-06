@@ -4,7 +4,7 @@
 //
 //   POST /api/ask   body { question, author }  -> { id }   (creates Pending row)
 //   GET  /api/ask?id=<pageId>                  -> { status, answer }
-import { DB, checkPass, notion, rowFromPage, buildProperties } from './_lib';
+import { DB, checkPass, notion, rowFromPage, buildProperties } from '../lib/ivf';
 
 export default async function handler(req: any, res: any) {
   if (!checkPass(req, res)) return;
