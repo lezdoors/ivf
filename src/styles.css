@@ -49,3 +49,15 @@
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-espresso px-5 text-sm font-medium text-white transition-opacity disabled:opacity-50;
   }
 }
+
+/* iOS Safari auto-zooms into any focused <input> whose font-size is < 16px,
+   which leaves the whole page zoomed in ("too big for the screen") — the gate
+   passcode field is autofocused on load, so this fires immediately. Keep form
+   controls at 16px on small screens to prevent the zoom. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
