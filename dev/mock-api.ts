@@ -24,6 +24,12 @@ const store: Record<string, Row[]> = {
     { id: uid(), createdTime: '', Medication: 'Menopur', Dose: '150 IU', Frequency: 'nightly', Purpose: 'stimulation', 'Insurance Status': 'Preauth needed', 'Qty Left': 5 },
     { id: uid(), createdTime: '', Medication: 'Cetrotide', Dose: '0.25 mg', Frequency: 'morning', Purpose: 'prevent early ovulation', 'Insurance Status': 'Covered', 'Qty Left': 4 },
   ],
+  labResults: [
+    { id: uid(), createdTime: '', Test: 'Semen: Concentration', Date: '2026-07-06', Value: 43.2, Units: 'M/ml', 'Reference Range': '>= 16', Notes: 'Normal.' },
+    { id: uid(), createdTime: '', Test: 'Semen: Motility', Date: '2026-07-06', Value: 51, Units: '%', 'Reference Range': '>= 42', Notes: 'Normal.' },
+    { id: uid(), createdTime: '', Test: 'Semen: Total motile count (TMC)', Date: '2026-07-06', Value: 65.4, Units: 'M/ejac', 'Reference Range': '>= 16', Notes: 'Normal.' },
+    { id: uid(), createdTime: '', Test: 'Semen Analysis — summary (Jul 6)', Date: '2026-07-06', Value: null, Units: '', 'Reference Range': '', Notes: 'REI Semen Analysis, Stanford — all WHO 6th parameters normal. Viscosity & liquefaction abnormal (low clinical significance).' },
+  ],
   journal: [
     { id: uid(), createdTime: '', Entry: 'first shots done', Date: '2026-07-05', Author: 'Nina', Feeling: 'Hopeful', Mood: 'Okay', Symptoms: 'mild bloating', Notes: 'nervous but ready.' },
     { id: uid(), createdTime: '', Entry: 'we can do this', Date: '2026-07-08', Author: 'Both', Feeling: 'Grateful', Mood: 'Good', Symptoms: '', Notes: 'talked it through together.' },

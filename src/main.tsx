@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Activity, NotebookPen, CalendarDays, Pill, Bot, LogOut } from 'lucide-react';
+import { LayoutDashboard, Activity, NotebookPen, CalendarDays, Pill, FlaskConical, Bot, LogOut } from 'lucide-react';
 import * as api from './api';
 import type { User } from './types';
-import { Dashboard, Monitoring, Journal, Appointments, Meds, Agent } from './views';
+import { Dashboard, Monitoring, Journal, Appointments, Meds, Records, Agent } from './views';
 import { EASE, Reveal } from './ui';
 import './styles.css';
 
-type Tab = 'today' | 'monitoring' | 'journal' | 'appointments' | 'meds' | 'agent';
+type Tab = 'today' | 'monitoring' | 'journal' | 'appointments' | 'meds' | 'records' | 'agent';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'today', label: 'today', icon: <LayoutDashboard size={16} /> },
@@ -16,6 +16,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'journal', label: 'journal', icon: <NotebookPen size={16} /> },
   { id: 'appointments', label: 'appts', icon: <CalendarDays size={16} /> },
   { id: 'meds', label: 'meds', icon: <Pill size={16} /> },
+  { id: 'records', label: 'labs', icon: <FlaskConical size={16} /> },
   { id: 'agent', label: 'dr. sherpa', icon: <Bot size={16} /> },
 ];
 
@@ -122,6 +123,7 @@ function App() {
           {tab === 'journal' && <Journal user={user} />}
           {tab === 'appointments' && <Appointments />}
           {tab === 'meds' && <Meds />}
+          {tab === 'records' && <Records />}
           {tab === 'agent' && <Agent user={user} />}
         </motion.main>
       </AnimatePresence>

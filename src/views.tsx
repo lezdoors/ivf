@@ -4,7 +4,7 @@ import {
   Activity, CalendarDays, HeartPulse, Pill, Bot, Send, RefreshCw, AlertTriangle, Syringe, FlaskConical,
 } from 'lucide-react';
 import * as api from './api';
-import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow } from './types';
+import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, LabResultRow } from './types';
 import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
 
 // Stable facts from the "IVF Journey — Ryan & Nina" hub (rarely change).
@@ -439,7 +439,10 @@ export function Appointments() {
                   <div>
                     <strong className="text-sm font-medium text-espresso">{r.Appointment}</strong>
                     <p className="mt-1 text-sm text-taupe-500">{[r.Provider, r.Clinic].filter(Boolean).join(' · ')}</p>
+                    {r.Purpose && <p className="mt-0.5 text-xs text-taupe-500">{r.Purpose}</p>}
                     {r.Prep && <p className="mt-0.5 text-xs text-taupe-500">prep: {r.Prep}</p>}
+                    {r.Results && <p className="mt-1.5 rounded-lg bg-sand px-3 py-2 text-xs leading-relaxed text-taupe-600 card-inset">{r.Results}</p>}
+                    {r['Follow-up'] && <p className="mt-1 text-xs text-taupe-500">follow-up: {r['Follow-up']}</p>}
                   </div>
                 </div>
               ))}
@@ -523,6 +526,72 @@ export function Meds() {
           )}
         </Card>
       </Reveal>
+    </div>
+  );
+}
+
+// ---- Records (lab results) --------------------------------------------------
+// A row whose Value is null/undefined is treated as a narrative summary line.
+function isSummary(r: LabResultRow) {
+  return r.Value == null || Number.isNaN(Number(r.Value));
+}
+export function Records() {
+  const { data, error, loading } = useAsync(() => api.listDb('labResults', 'Date', 'desc'), []);
+  const rows = (data as LabResultRow[] | null) || [];
+  // group by date, newest first (listDb already sorts desc)
+  const groups: { date?: string; rows: LabResultRow[] }[] = [];
+  for (const r of rows) {
+    const key = dISO(r.Date);
+    const g = groups.find((x) => dISO(x.date) === key);
+    if (g) g.rows.push(r); else groups.push({ date: r.Date, rows: [r] });
+  }
+  return (
+    <div className="grid gap-3 sm:gap-4">
+      <Reveal>
+        <Card>
+          <Eyebrow className="mb-1 flex items-center gap-2"><FlaskConical size={13} /> lab results</Eyebrow>
+          <p className="text-sm text-taupe-500">bloodwork, semen analysis, genetics — pulled from your records.</p>
+        </Card>
+      </Reveal>
+
+      {loading ? <Reveal delay={0.06}><Card><Loading /></Card></Reveal>
+        : error ? <Reveal delay={0.06}><Card><ErrorNote error={error} /></Card></Reveal>
+        : rows.length === 0 ? <Reveal delay={0.06}><Card><p className="text-sm text-taupe-500">no lab results yet.</p></Card></Reveal>
+        : groups.map((g, gi) => (
+          <Reveal key={g.date || gi} delay={0.06 + gi * 0.05}>
+            <Card>
+              <div className="mb-4 flex items-baseline justify-between">
+                <Eyebrow>{longDate(g.date)}</Eyebrow>
+                <span className="text-xs text-taupe-400">{g.rows.filter((r) => !isSummary(r)).length} results</span>
+              </div>
+              <div className="divide-y divide-line">
+                {g.rows.map((r) => isSummary(r) ? (
+                  <div key={r.id} className="py-3 first:pt-0 last:pb-0">
+                    <strong className="text-sm font-medium text-espresso">{r.Test}</strong>
+                    {r.Notes && <p className="mt-1 text-sm leading-relaxed text-taupe-600">{r.Notes}</p>}
+                  </div>
+                ) : (
+                  <div key={r.id} className="grid grid-cols-[1fr_auto] items-baseline gap-3 py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <span className="text-sm text-espresso">{r.Test}</span>
+                      {(r['Reference Range'] || r.Notes) && (
+                        <p className="mt-0.5 text-xs text-taupe-400">
+                          {r['Reference Range'] ? `ref ${r['Reference Range']}` : ''}
+                          {r['Reference Range'] && r.Notes ? ' · ' : ''}
+                          {r.Notes || ''}
+                        </p>
+                      )}
+                    </div>
+                    <div className="whitespace-nowrap text-right">
+                      <strong className="text-lg font-light tracking-tight text-espresso">{r.Value}</strong>
+                      {r.Units && <span className="ml-1 text-xs text-taupe-400">{r.Units}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </Reveal>
+        ))}
     </div>
   );
 }

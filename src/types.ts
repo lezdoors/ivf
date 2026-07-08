@@ -39,6 +39,15 @@ export type AppointmentRow = Row & {
   'Follow-up'?: string;
 };
 
+export type LabResultRow = Row & {
+  Test?: string;
+  Date?: string;
+  Value?: number;
+  Units?: string;
+  'Reference Range'?: string;
+  Notes?: string;
+};
+
 export type MedicationRow = Row & {
   Medication?: string;
   Dose?: string;
