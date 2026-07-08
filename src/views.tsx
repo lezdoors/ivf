@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Activity, CalendarDays, HeartPulse, Pill, Bot, Send, RefreshCw, AlertTriangle, Syringe, FlaskConical,
 } from 'lucide-react';
@@ -22,14 +22,43 @@ const HUB = {
 };
 
 const FEELINGS: { name: string; color: string }[] = [
-  { name: 'Hopeful', color: '#3a1fe6' },
-  { name: 'Grateful', color: '#5b8def' },
-  { name: 'Soft', color: '#b9b2f2' },
-  { name: 'Tender', color: '#a07bf0' },
-  { name: 'Anxious', color: '#8f7bff' },
-  { name: 'Heavy', color: '#6d78c9' },
+  { name: 'Hopeful', color: '#e18a3a' },
+  { name: 'Grateful', color: '#3f7d5a' },
+  { name: 'Soft', color: '#8fbf6f' },
+  { name: 'Tender', color: '#e6a15a' },
+  { name: 'Anxious', color: '#c26f21' },
+  { name: 'Heavy', color: '#6f8a72' },
 ];
 const MOODS = ['Good', 'Okay', 'Tough'];
+
+const QUOTES = [
+  'One gentle step at a time is all today asks of you.',
+  'Hope is a discipline. Keep choosing it.',
+  'Your body is doing quiet, extraordinary work right now.',
+  'Rest is part of the plan, not a break from it.',
+  'You are not behind. You are in the middle of becoming.',
+  'Whatever today holds, you are holding it together.',
+  'Be as kind to yourself as you would be to someone you love.',
+  'Every scan, every shot, every day; it all counts.',
+  'Courage is showing up for the next appointment.',
+  'The garden does not rush, and still it blooms.',
+  'Breathe. You have made it through every hard day so far.',
+  'Two people, one hope, one steady day at a time.',
+  'Tenderness is strength. Let yourself feel it all.',
+  'This chapter is hard, and you are still writing it.',
+  'Whatever the numbers say today, you are more than a number.',
+];
+function QuoteOfDay() {
+  const start = new Date(new Date().getFullYear(), 0, 0).getTime();
+  const i = Math.floor((Date.now() - start) / 86400000) % QUOTES.length;
+  return (
+    <section className="quote-card">
+      <span className="quote-mark">&ldquo;</span>
+      <p>{QUOTES[i]}</p>
+      <span className="quote-sub">a note for today</span>
+    </section>
+  );
+}
 
 function Loading() {
   return <div className="loading"><RefreshCw size={16} className="spin" /> loading…</div>;
@@ -66,6 +95,8 @@ export function Dashboard({ user }: { user: User }) {
           <span>· planned start {compact(HUB.start)}</span>
         </div>
       </section>
+
+      <QuoteOfDay />
 
       <div className="stat-row">
         <article><CalendarDays /><strong>{compact(HUB.start)}</strong><span>cycle start</span></article>
@@ -360,6 +391,8 @@ export function Agent({ user }: { user: User }) {
   const [q, setQ] = useState('');
   const [thread, setThread] = useState<{ q: string; a?: string; status: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [thread]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -391,7 +424,16 @@ export function Agent({ user }: { user: User }) {
         <span className="eyebrow"><Bot size={15} /> ask Dr. Sherpa</span>
         <p className="muted">your IVF guide — answers questions, logs scans/appointments, and can send Slack. every action is recorded so you can see exactly what it did.</p>
         <div className="agent-thread">
-          {thread.length === 0 && <p className="muted small">try: "what's my next appointment?" · "log E2 420 lead follicle 14 today" · "remind us on slack about the semen analysis"</p>}
+          {thread.length === 0 && (
+            <div className="agent-empty">
+              <p>Ask anything about your cycle. Dr. Sherpa can answer, log a scan or appointment, and send a Slack note — every action is recorded.</p>
+              <div className="agent-suggests">
+                {['what is my next appointment?', 'log E2 420 and lead follicle 14 today', 'what does my semen analysis mean?'].map((s) => (
+                  <button type="button" key={s} className="suggest-chip" onClick={() => setQ(s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {thread.map((m, i) => (
             <div key={i} className="agent-turn">
               <div className="agent-q"><strong>{user.toLowerCase()}</strong> {m.q}</div>
@@ -402,6 +444,7 @@ export function Agent({ user }: { user: User }) {
               </div>
             </div>
           ))}
+          <div ref={endRef} />
         </div>
         <form className="agent-form" onSubmit={submit}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ask dr. sherpa…" />

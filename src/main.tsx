@@ -33,7 +33,7 @@ function Gate({ onIn }: { onIn: () => void }) {
   return (
     <div className="gate">
       <div className="gate-card">
-        <img src="/app-icon.jpg" alt="nina" />
+        <img src="/nina-icon.svg" alt="nina" />
         <h1>nina</h1>
         <p>your private IVF companion.</p>
         <form onSubmit={submit}>
@@ -58,7 +58,7 @@ function App() {
   return (
     <div className="app">
       <nav className="topbar">
-        <div className="brand-mark"><img src="/app-icon.jpg" alt="" /> nina</div>
+        <div className="brand-mark"><img src="/nina-icon.svg" alt="" /> nina</div>
         <div className="user-switch">
           {(['Ryan', 'Nina', 'Both'] as User[]).map((u) => (
             <button key={u} className={user === u ? 'active' : ''} onClick={() => setUser(u)}>
