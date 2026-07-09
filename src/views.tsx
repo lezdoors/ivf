@@ -8,8 +8,27 @@ import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, La
 import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
 
 // Stable facts from the "IVF Journey — Ryan & Nina" hub (rarely change).
+// Cycle milestones (Stanford estrogen-priming antagonist protocol). CD1 = first
+// day of menses. Trigger/retrieval are best estimates until monitoring confirms.
+const CYCLE = {
+  cd1: '2026-07-05', // first day of menses
+  stimStart: '2026-07-06', // CD2 — Follistim + Menopur begin
+  trigger: '2026-07-15', // possible hCG + Lupron
+  retrieval: '2026-07-17', // possible retrieval
+};
+const daysBetween = (a: string, b: string) =>
+  Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000);
+// Phase derives from today's date so the dashboard stays current without redeploys.
+function cyclePhase(): string {
+  const t = todayISO();
+  if (t < CYCLE.stimStart) return `Priming — stimulation begins ${compact(CYCLE.stimStart)}`;
+  if (t < CYCLE.trigger) return `Stimulation · day ${daysBetween(t, CYCLE.stimStart) + 1} of stims`;
+  if (t < CYCLE.retrieval) return `Trigger window — retrieval ~${compact(CYCLE.retrieval)}`;
+  if (t === CYCLE.retrieval) return 'Retrieval day';
+  return 'Post-retrieval';
+}
+
 const HUB = {
-  phase: 'Insurance / Approval — retrieval cycle authorized',
   clinic: 'Stanford · Dr. Amin Milki',
   patient: 'Nina Noe-Chapuis',
   start: '2026-07-05',
@@ -81,7 +100,7 @@ export function Dashboard({ user }: { user: User }) {
           </span>
           <Eyebrow>current phase</Eyebrow>
         </div>
-        <h1 className="text-2xl font-light leading-snug tracking-tight text-espresso sm:text-3xl">{HUB.phase}</h1>
+        <h1 className="text-2xl font-light leading-snug tracking-tight text-espresso sm:text-3xl">{cyclePhase()}</h1>
         <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-taupe-500">
           <span>{HUB.clinic}</span>
           <span>· patient {HUB.patient}</span>
