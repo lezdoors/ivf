@@ -21,6 +21,21 @@ export default {
           500: '#B8735A',
           600: '#9C5D47',
         },
+        // From Nina's hummingbird watercolor (IMG_4805): the gorget + body.
+        raspberry: {
+          50: '#F7EBEE',
+          100: '#F0DAE0',
+          400: '#A44458',
+          500: '#8B3348',
+          600: '#6E2438',
+        },
+        sage: {
+          50: '#F0F0E8',
+          100: '#E4E4D6',
+          400: '#8A8A5E',
+          500: '#676536',
+          600: '#4F4E2A',
+        },
         line: '#EAE5DD',
       },
     },

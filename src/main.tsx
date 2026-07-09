@@ -37,7 +37,7 @@ function Gate({ onIn }: { onIn: () => void }) {
   return (
     <div className="grid min-h-screen place-items-center bg-sand p-6">
       <Reveal className="grid w-full max-w-[360px] justify-items-center gap-2 rounded-2xl bg-white p-10 text-center card-inset">
-        <img src="/icon.svg" alt="nina" className="h-12 w-12 rounded-xl" />
+        <img src="/icon-192.png" alt="nina" className="h-14 w-14 rounded-2xl shadow-sm" />
         <h1 className="mt-4 text-2xl font-light tracking-tight text-espresso">nina</h1>
         <p className="mb-4 text-sm text-taupe-500">your private IVF companion.</p>
         <form onSubmit={submit} className="grid w-full gap-2.5">
@@ -71,7 +71,7 @@ function App() {
     <div className="mx-auto min-h-screen w-full max-w-[880px] bg-sand px-4 pb-16 pt-6 sm:px-6">
       <nav className="mb-4 flex items-center justify-between gap-3 pb-4">
         <div className="inline-flex items-center gap-2.5 text-[15px] font-medium tracking-tight text-espresso">
-          <img src="/icon.svg" alt="" className="h-7 w-7 rounded-lg" /> nina
+          <img src="/icon-192.png" alt="" className="h-7 w-7 rounded-lg" /> nina
         </div>
         <div className="flex gap-0.5 rounded-full bg-white p-0.5 card-inset">
           {(['Ryan', 'Nina', 'Both'] as User[]).map((u) => (
