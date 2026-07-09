@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Activity, NotebookPen, CalendarDays, Pill, FlaskConical, Bot, LogOut } from 'lucide-react';
+import { LayoutDashboard, CalendarRange, Activity, NotebookPen, CalendarDays, Pill, FlaskConical, Bot, LogOut } from 'lucide-react';
 import * as api from './api';
 import type { User } from './types';
-import { Dashboard, Monitoring, Journal, Appointments, Meds, Records, Agent } from './views';
+import { Dashboard, Calendar, Monitoring, Journal, Appointments, Meds, Records, Agent } from './views';
 import { EASE, Reveal } from './ui';
 import './styles.css';
 
-type Tab = 'today' | 'monitoring' | 'journal' | 'appointments' | 'meds' | 'records' | 'agent';
+type Tab = 'today' | 'calendar' | 'monitoring' | 'journal' | 'appointments' | 'meds' | 'records' | 'agent';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'today', label: 'today', icon: <LayoutDashboard size={16} /> },
+  { id: 'calendar', label: 'calendar', icon: <CalendarRange size={16} /> },
   { id: 'monitoring', label: 'monitoring', icon: <Activity size={16} /> },
   { id: 'journal', label: 'journal', icon: <NotebookPen size={16} /> },
   { id: 'appointments', label: 'appts', icon: <CalendarDays size={16} /> },
@@ -119,6 +120,7 @@ function App() {
           transition={{ duration: 0.35, ease: EASE }}
         >
           {tab === 'today' && <Dashboard user={user} />}
+          {tab === 'calendar' && <Calendar />}
           {tab === 'monitoring' && <Monitoring />}
           {tab === 'journal' && <Journal user={user} />}
           {tab === 'appointments' && <Appointments />}
