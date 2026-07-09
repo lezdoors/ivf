@@ -8,20 +8,28 @@ import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, La
 import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
 
 // Stable facts from the "IVF Journey — Ryan & Nina" hub (rarely change).
-// Cycle milestones (Stanford estrogen-priming antagonist protocol). CD1 = first
-// day of menses. Trigger/retrieval are best estimates until monitoring confirms.
+// Cycle milestones (Stanford estrogen-priming antagonist protocol). July is the
+// OPK → ovulation → estrace-priming lead-up; the STIM cycle starts on Cycle Day 2
+// of the next period (~early Aug). The August dates are estimates — they get
+// updated once Nina calls in her real Cycle Day 1. Near-term dates (OPK, estrace)
+// are from the care team + the couple's planning sheet.
 const CYCLE = {
-  cd1: '2026-07-05', // first day of menses
-  stimStart: '2026-07-06', // CD2 — Follistim + Menopur begin
-  trigger: '2026-07-15', // possible hCG + Lupron
-  retrieval: '2026-07-17', // possible retrieval
+  opkStart: '2026-07-13', // begin OPK testing
+  estraceStart: '2026-07-22', // estrogen priming (~5 days after the LH surge)
+  baseline: '2026-08-01', // stim-cycle CD1–2 baseline ultrasound (tentative)
+  stimStart: '2026-08-03', // CD2 — Follistim + Menopur begin (tentative)
+  trigger: '2026-08-13', // possible hCG + Lupron (tentative)
+  retrieval: '2026-08-15', // possible retrieval (tentative)
 };
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000);
 // Phase derives from today's date so the dashboard stays current without redeploys.
 function cyclePhase(): string {
   const t = todayISO();
-  if (t < CYCLE.stimStart) return `Priming — stimulation begins ${compact(CYCLE.stimStart)}`;
+  if (t < CYCLE.opkStart) return `Pre-cycle — OPK testing begins ${compact(CYCLE.opkStart)}`;
+  if (t < CYCLE.estraceStart) return 'OPK testing — watching for the LH surge';
+  if (t < CYCLE.baseline) return `Estrogen priming (estrace) — stim cycle ~${compact(CYCLE.stimStart)}`;
+  if (t < CYCLE.stimStart) return 'Baseline — stimulation begins on Cycle Day 2';
   if (t < CYCLE.trigger) return `Stimulation · day ${daysBetween(t, CYCLE.stimStart) + 1} of stims`;
   if (t < CYCLE.retrieval) return `Trigger window — retrieval ~${compact(CYCLE.retrieval)}`;
   if (t === CYCLE.retrieval) return 'Retrieval day';
@@ -31,7 +39,7 @@ function cyclePhase(): string {
 const HUB = {
   clinic: 'Stanford · Dr. Amin Milki',
   patient: 'Nina Noe-Chapuis',
-  start: '2026-07-05',
+  start: CYCLE.baseline, // stim cycle begins ~early Aug (baseline/CD1); tentative
   authExpires: '2026-12-06',
   risks: [
     'PGT-A genetics lab must be in-network (separate bill, HMO = 100% if out-of-network)',
