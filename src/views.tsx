@@ -18,8 +18,8 @@ const CYCLE = {
   estraceStart: '2026-07-22', // estrogen priming (~5 days after the LH surge)
   baseline: '2026-08-01', // stim-cycle CD1–2 baseline ultrasound (tentative)
   stimStart: '2026-08-03', // CD2 — Follistim + Menopur begin (tentative)
-  trigger: '2026-08-13', // possible hCG + Lupron (tentative)
-  retrieval: '2026-08-15', // possible retrieval (tentative)
+  trigger: '2026-08-12', // possible hCG + Lupron (tentative)
+  retrieval: '2026-08-14', // possible retrieval (tentative)
 };
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000);
