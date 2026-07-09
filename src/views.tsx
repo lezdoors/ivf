@@ -796,18 +796,61 @@ function CycleSettings({ value, onChange }: { value: CycleInput; onChange: (v: C
   );
 }
 
+// --- Notion is the source of truth --------------------------------------------
+// Live appointment rows override the engine's computed milestones: an engine
+// milestone is suppressed when a Notion row on the SAME date matches its
+// intent, and appointments merge into the agenda as confirmed items. If the
+// engine shifts (real dates entered) while Notion still has the old date, both
+// show — a visible contradiction that says "update Notion".
+const MILESTONE_MATCH: Record<string, RegExp> = {
+  'opk-start': /opk/i,
+  'ivf-class': /ivf class/i,
+  'pgt-class': /pgt/i,
+  'consent-signing': /consent/i,
+  'estrace-start': /estrace|estradiol/i,
+  'baseline': /baseline/i,
+  'day5-us': /day.?5|monitoring/i,
+  'retrieval': /retrieval/i,
+  'trigger': /trigger/i,
+  'opk-no-peak-call': /peak/i,
+  'schedule-baseline-call': /schedule|stanford/i,
+};
+function dedupeAgainstNotion(milestones: Milestone[], appts: AppointmentRow[]): Milestone[] {
+  return milestones.filter((m) => {
+    const re = MILESTONE_MATCH[m.id];
+    if (!re) return true;
+    return !appts.some((a) => dISO(a.Date) === m.date && re.test(a.Appointment || ''));
+  });
+}
+function apptToMilestone(a: AppointmentRow): Milestone | null {
+  const d = dISO(a.Date);
+  if (!d) return null;
+  const title = a.Appointment || 'Appointment';
+  const hasTime = !!a.Date && a.Date.length > 10;
+  const time = hasTime ? new Date(a.Date!).toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' }) : '';
+  const note = [a.Prep, [a.Provider, a.Clinic].filter(Boolean).join(' · ')].filter(Boolean).join(' — ');
+  return {
+    id: `appt-${a.id}`,
+    date: d,
+    title: time ? `${title} — ${time}` : title,
+    kind: /\bcall\b|period|peak/i.test(title) ? 'action' : 'fixed',
+    note: note || undefined,
+    isEstimate: false,
+  };
+}
+
 // --- month grid ---------------------------------------------------------------
 type Ev = { kind: MilestoneKind; label: string; isEstimate: boolean };
 
-function buildEvents(r: CycleResult, appts: AppointmentRow[]): Record<string, Ev[]> {
+function buildEvents(milestones: Milestone[], r: CycleResult, appts: AppointmentRow[]): Record<string, Ev[]> {
   const ev: Record<string, Ev[]> = {};
   const add = (iso: string, e: Ev) => { (ev[iso] ||= []).push(e); };
   // daily medication bars
   for (const w of r.medWindows) {
     for (let d = w.start; d < w.endExclusive; d = addDays(d, 1)) add(d, { kind: 'med', label: w.label, isEstimate: w.isEstimate });
   }
-  // milestones (skip med *starts* — the bars above already show them)
-  for (const m of r.milestones) {
+  // milestones, already deduped against Notion (skip med *starts* — the bars above show them)
+  for (const m of milestones) {
     if (m.kind === 'med') continue;
     add(m.date, { kind: m.kind, label: m.title, isEstimate: m.isEstimate });
   }
@@ -871,10 +914,11 @@ function MonthGrid({ y, m, events, today, cdFor, isStimMonth }: {
 }
 
 // --- agenda: phone-first milestone list grouped by month ----------------------
-function Agenda({ r }: { r: CycleResult }) {
+// Receives engine milestones (deduped) MERGED with live Notion appointments.
+function Agenda({ items }: { items: Milestone[] }) {
   const today = todayISO();
   const groups: { ym: string; items: Milestone[] }[] = [];
-  for (const m of r.milestones) {
+  for (const m of items) {
     const ym = m.date.slice(0, 7);
     const g = groups[groups.length - 1];
     if (g && g.ym === ym) g.items.push(m);
@@ -922,7 +966,14 @@ export function Calendar() {
   const { data, loading } = useAsync(() => api.listDb('appointments', 'Date', 'asc'), []);
   const appts = (data as AppointmentRow[] | null) || [];
   const today = todayISO();
-  const events = useMemo(() => buildEvents(r, appts), [r, data]);
+  // Notion wins: suppress engine milestones matched by a same-date Notion row,
+  // then merge appointments into the agenda as confirmed items.
+  const deduped = useMemo(() => dedupeAgainstNotion(r.milestones, appts), [r, data]);
+  const agendaItems = useMemo(() => {
+    const merged = [...deduped, ...appts.map(apptToMilestone).filter((m): m is Milestone => m !== null)];
+    return merged.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }, [deduped, data]);
+  const events = useMemo(() => buildEvents(deduped, r, appts), [deduped, r, data]);
 
   // cycle-day badge: current cycle from cd1, stim cycle from the (real or
   // estimated) next Day 1 — the stim cycle wins once it starts.
@@ -983,7 +1034,7 @@ export function Calendar() {
       <Reveal delay={0.08}>
         <Card>
           <Eyebrow className="mb-4">milestones</Eyebrow>
-          <Agenda r={r} />
+          <Agenda items={agendaItems} />
           <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-taupe-500">
             {r.ongoing.map((o) => <span key={o.id}><GlossaryText text={o.label} /> from {compact(o.from)} onward, every day.</span>)}
           </p>
