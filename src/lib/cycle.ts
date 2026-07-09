@@ -9,7 +9,7 @@ export interface CycleInput {
   cycleLength: number; // default 28
   actualSurge?: string; // actual positive OPK date, overrides the estimate
   actualStimCd1?: string; // actual next period Day 1 (called into clinic), overrides estimate
-  estraceOffsetDays?: number; // default 5 (Estrace starts ~5 days after surge)
+  estraceOffsetDays?: number; // default 5 (Estrace starts on "Day 5" — 5 days after peak ovulation)
   periodAfterEstraceMin?: number; // default 10
   periodAfterEstraceMax?: number; // default 12
 }
@@ -87,15 +87,18 @@ export function computeCycle(input: CycleInput): CycleResult {
   const pMin = input.periodAfterEstraceMin ?? 10;
   const pMax = input.periodAfterEstraceMax ?? 12;
 
-  // Luteal phase held at 14 days: ovulation on CD(cycleLength − 14).
-  // CD1 is cd1 itself, so CDn = cd1 + (n − 1) days.
-  const estimatedOvulation = addDays(cd1, cycleLength - 14 - 1);
+  // Peak ovulation per the couple's planning sheet: "day 14 — 14 days after
+  // the start of the period" (generalised: cycleLength − 14 days after cd1,
+  // luteal phase held at 14). The LH surge is the day before; a real positive
+  // OPK overrides it and shifts everything downstream.
+  const estimatedOvulation = addDays(cd1, cycleLength - 14);
   const estimatedSurge = addDays(estimatedOvulation, -1);
   const surgeIsActual = isValidISO(input.actualSurge);
   const surge = surgeIsActual ? input.actualSurge! : estimatedSurge;
   const ovulation = surgeIsActual ? addDays(surge, 1) : estimatedOvulation;
 
-  const estraceStart = addDays(surge, estraceOffset);
+  // Estrace starts on "Day 5" — Day 1 is the day after peak ovulation.
+  const estraceStart = addDays(ovulation, estraceOffset);
   const nextPeriodWindow: [string, string] = [addDays(estraceStart, pMin), addDays(estraceStart, pMax)];
   const stimCd1IsActual = isValidISO(input.actualStimCd1);
   const stimCd1 = stimCd1IsActual ? input.actualStimCd1! : addDays(estraceStart, Math.round((pMin + pMax) / 2));
@@ -104,12 +107,29 @@ export function computeCycle(input: CycleInput): CycleResult {
   const triggerEstimate = addDays(stimCd2, 9); // stim day ~10 — monitoring-dependent
   const retrievalEstimate = addDays(triggerEstimate, 2); // ~36h after trigger
 
-  const opkStart = addDays(cd1, 8); // CD9 (clinic said 7/13 for a 7/5 CD1)
+  const opkStart = addDays(cd1, 6); // CD7 (sheet: OPK testing starts 7/11 for a 7/5 CD1)
 
   const unsorted: Milestone[] = [
     { id: 'cd1', date: cd1, title: 'Cycle Day 1 — period starts', kind: 'fixed', note: 'Daily prenatal (400mcg+ folic acid) from today onward.', isEstimate: false },
-    { id: 'opk-start', date: opkStart, title: 'Start OPK testing (CD9)', kind: 'action', note: 'Test each morning until the stick turns positive — that is the LH surge.', isEstimate: false },
+    { id: 'opk-start', date: opkStart, title: 'Start OPK testing (CD7)', kind: 'action', note: 'Test each morning until the stick turns positive — that is the LH surge.', isEstimate: false },
     ...FIXED_APPOINTMENTS,
+    ...(surgeIsActual
+      ? []
+      : [{
+          id: 'opk-no-peak-call',
+          date: addDays(estimatedOvulation, -2),
+          title: 'Call the office if the peak has not been reached yet',
+          kind: 'action' as const,
+          isEstimate: true,
+        }]),
+    {
+      id: 'schedule-baseline-call',
+      date: ovulation,
+      title: 'Call Stanford — schedule the baseline U/S',
+      kind: 'action',
+      note: `${CLINIC_PHONE} — the baseline lands on CD1–2 of the next period.`,
+      isEstimate: !surgeIsActual,
+    },
     {
       id: 'surge',
       date: surge,
@@ -118,13 +138,13 @@ export function computeCycle(input: CycleInput): CycleResult {
       note: surgeIsActual ? undefined : 'Enter the real positive-OPK date above once it happens — everything after recomputes.',
       isEstimate: !surgeIsActual,
     },
-    { id: 'ovulation', date: ovulation, title: 'Likely ovulation', kind: 'estimate', isEstimate: !surgeIsActual },
+    { id: 'ovulation', date: ovulation, title: 'Peak ovulation day', kind: 'estimate', isEstimate: !surgeIsActual },
     {
       id: 'estrace-start',
       date: estraceStart,
       title: 'Start Estrace (estrogen priming)',
       kind: 'med',
-      note: `~${estraceOffset} days after the surge. Daily until the baseline scan.`,
+      note: `Day ${estraceOffset} — counted from the day after peak ovulation. Daily until the baseline scan.`,
       isEstimate: !surgeIsActual,
     },
     ...(stimCd1IsActual
@@ -176,6 +196,14 @@ export function computeCycle(input: CycleInput): CycleResult {
       isEstimate: true,
     },
     {
+      id: 'abstinence',
+      date: addDays(retrievalEstimate, -2),
+      title: 'Male abstinence window starts',
+      kind: 'action',
+      note: 'No more than 48 hours before retrieval.',
+      isEstimate: true,
+    },
+    {
       id: 'retrieval',
       date: retrievalEstimate,
       title: 'Egg retrieval — ~36h after trigger',
@@ -188,12 +216,14 @@ export function computeCycle(input: CycleInput): CycleResult {
 
   const medWindows: MedWindow[] = [
     { id: 'estrace', label: 'Estrace', start: estraceStart, endExclusive: stimCd2, isEstimate: !surgeIsActual },
-    { id: 'stims', label: 'Follistim + Menopur (pm)', start: stimCd2, endExclusive: triggerEstimate, isEstimate: !stimCd1IsActual },
+    // Sheet shows Follistim + Menopur nightly through trigger day (10 nights).
+    { id: 'stims', label: 'Follistim + Menopur (pm)', start: stimCd2, endExclusive: addDays(triggerEstimate, 1), isEstimate: !stimCd1IsActual },
     { id: 'ganirelix', label: 'Ganirelix (am)', start: day5Ultrasound, endExclusive: triggerEstimate, isEstimate: !stimCd1IsActual },
   ];
 
   const ongoing: OngoingItem[] = [
     { id: 'prenatal', label: 'Daily prenatal (400mcg+ folic acid)', from: cd1 },
+    { id: 'coq10', label: 'CoQ10 400mg', from: cd1 },
   ];
 
   return {
