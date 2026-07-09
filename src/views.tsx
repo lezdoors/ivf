@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity, CalendarDays, HeartPulse, Pill, Bot, Send, RefreshCw, AlertTriangle, Syringe, FlaskConical,
@@ -6,40 +6,46 @@ import {
 import * as api from './api';
 import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, LabResultRow } from './types';
 import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
+import { computeCycle, diffDays, addDays } from './lib/cycle';
+import type { CycleInput, CycleResult, Milestone, MilestoneKind } from './lib/cycle';
+import { GLOSSARY, TERM_RE, lookupTerm } from './lib/glossary';
 
-// Stable facts from the "IVF Journey — Ryan & Nina" hub (rarely change).
-// Cycle milestones (Stanford estrogen-priming antagonist protocol). July is the
-// OPK → ovulation → estrace-priming lead-up; the STIM cycle starts on Cycle Day 2
-// of the next period (~early Aug). The August dates are estimates — they get
-// updated once Nina calls in her real Cycle Day 1. Near-term dates (OPK, estrace)
-// are from the care team + the couple's planning sheet.
-const CYCLE = {
-  opkStart: '2026-07-13', // begin OPK testing
-  estraceStart: '2026-07-22', // estrogen priming (~5 days after the LH surge)
-  baseline: '2026-08-01', // stim-cycle CD1–2 baseline ultrasound (tentative)
-  stimStart: '2026-08-03', // CD2 — Follistim + Menopur begin (tentative)
-  trigger: '2026-08-12', // possible hCG + Lupron (tentative)
-  retrieval: '2026-08-14', // possible retrieval (tentative)
-};
-const daysBetween = (a: string, b: string) =>
-  Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000);
+// The cycle timeline is COMPUTED (src/lib/cycle.ts) from a few editable inputs:
+// last period Day 1 + cycle length, overridden by the real +OPK surge and the
+// real next Cycle Day 1 once they're entered on the calendar tab. Nothing here
+// hardcodes protocol dates — everything recomputes when the inputs change.
+const CYCLE_INPUT_KEY = 'ivf-cycle-input';
+const CYCLE_DEFAULTS: CycleInput = { cd1: '2026-07-05', cycleLength: 28 };
+function loadCycleInput(): CycleInput {
+  try {
+    const raw = localStorage.getItem(CYCLE_INPUT_KEY);
+    return raw ? { ...CYCLE_DEFAULTS, ...JSON.parse(raw) } : CYCLE_DEFAULTS;
+  } catch {
+    return CYCLE_DEFAULTS;
+  }
+}
+function saveCycleInput(v: CycleInput) {
+  try {
+    localStorage.setItem(CYCLE_INPUT_KEY, JSON.stringify(v));
+  } catch { /* private mode — inputs just won't persist */ }
+}
+
 // Phase derives from today's date so the dashboard stays current without redeploys.
-function cyclePhase(): string {
+function cyclePhase(r: CycleResult): string {
   const t = todayISO();
-  if (t < CYCLE.opkStart) return `Pre-cycle — OPK testing begins ${compact(CYCLE.opkStart)}`;
-  if (t < CYCLE.estraceStart) return 'OPK testing — watching for the LH surge';
-  if (t < CYCLE.baseline) return `Estrogen priming (estrace) — stim cycle ~${compact(CYCLE.stimStart)}`;
-  if (t < CYCLE.stimStart) return 'Baseline — stimulation begins on Cycle Day 2';
-  if (t < CYCLE.trigger) return `Stimulation · day ${daysBetween(t, CYCLE.stimStart) + 1} of stims`;
-  if (t < CYCLE.retrieval) return `Trigger window — retrieval ~${compact(CYCLE.retrieval)}`;
-  if (t === CYCLE.retrieval) return 'Retrieval day';
+  if (t < r.opkStart) return `Pre-cycle — OPK testing begins ${compact(r.opkStart)}`;
+  if (t < r.estraceStart) return 'OPK testing — watching for the LH surge';
+  if (t < r.stimCd1) return `Estrogen priming (estrace) — stim cycle ~${compact(r.stimCd2)}`;
+  if (t < r.stimCd2) return 'Baseline — stimulation begins on Cycle Day 2';
+  if (t < r.triggerEstimate) return `Stimulation · day ${diffDays(t, r.stimCd2) + 1} of stims`;
+  if (t < r.retrievalEstimate) return `Trigger window — retrieval ~${compact(r.retrievalEstimate)}`;
+  if (t === r.retrievalEstimate) return 'Retrieval day';
   return 'Post-retrieval';
 }
 
 const HUB = {
   clinic: 'Stanford · Dr. Amin Milki',
   patient: 'Nina Noe-Chapuis',
-  start: CYCLE.baseline, // stim cycle begins ~early Aug (baseline/CD1); tentative
   authExpires: '2026-12-06',
   risks: [
     'PGT-A genetics lab must be in-network (separate bill, HMO = 100% if out-of-network)',
@@ -81,6 +87,7 @@ function ErrorNote({ error }: { error: string }) {
 
 // ---- Dashboard --------------------------------------------------------------
 export function Dashboard({ user }: { user: User }) {
+  const cycle = useMemo(() => computeCycle(loadCycleInput()), []);
   const appts = useAsync(() => api.listDb('appointments', 'Date', 'asc'), []);
   const mon = useAsync(() => api.listDb('monitoring', 'Date', 'desc'), []);
   const authLeft = daysUntil(HUB.authExpires);
@@ -89,7 +96,7 @@ export function Dashboard({ user }: { user: User }) {
   const latest = (mon.data as MonitoringRow[] | null)?.[0];
 
   const stats = [
-    { icon: CalendarDays, value: compact(HUB.start), label: 'cycle start', critical: false },
+    { icon: CalendarDays, value: compact(cycle.stimCd2), label: cycle.stimCd1IsActual ? 'stim start' : 'stim start (est.)', critical: false },
     { icon: AlertTriangle, value: `${authLeft}d`, label: `auth expires ${compact(HUB.authExpires)}`, critical: authCritical },
     { icon: HeartPulse, value: latest?.['Lead Follicle (mm)'] ?? '—', label: 'lead follicle mm', critical: false },
     { icon: FlaskConical, value: latest?.E2 ?? '—', label: 'latest E2', critical: false },
@@ -108,11 +115,11 @@ export function Dashboard({ user }: { user: User }) {
           </span>
           <Eyebrow>current phase</Eyebrow>
         </div>
-        <h1 className="text-2xl font-light leading-snug tracking-tight text-espresso sm:text-3xl">{cyclePhase()}</h1>
+        <h1 className="text-2xl font-light leading-snug tracking-tight text-espresso sm:text-3xl">{cyclePhase(cycle)}</h1>
         <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-taupe-500">
           <span>{HUB.clinic}</span>
           <span>· patient {HUB.patient}</span>
-          <span>· planned start {compact(HUB.start)}</span>
+          <span>· planned start {compact(cycle.stimCd2)}</span>
         </div>
       </Reveal>
 
@@ -687,105 +694,156 @@ export function Agent({ user }: { user: User }) {
 }
 
 // ---- Calendar ---------------------------------------------------------------
-// A month view of the whole cycle. The medication bars, phase milestones and
-// cycle-day badges are DERIVED from the CYCLE dates above, so the calendar
-// stays correct if those shift (e.g. when Nina calls in her real Cycle Day 1);
-// live appointments from Notion are overlaid on top. August dates are estimates.
+// The whole cycle, computed live from the inputs panel (src/lib/cycle.ts).
+// Editing any input — cd1, cycle length, the real +OPK date, the real next
+// Cycle Day 1 — recomputes every milestone, med bar and cycle-day badge.
+// Live appointments from Notion are overlaid on top.
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const JULY_CD1 = '2026-07-05'; // first day of the current cycle (menses)
 
-const addDays = (iso: string, n: number) => {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
-type EvKind = 'appt' | 'med' | 'est' | 'call';
-type Ev = { kind: EvKind; label: string };
-
-const KIND_ORDER: Record<EvKind, number> = { call: 0, appt: 1, med: 2, est: 3 };
-const CHIP: Record<EvKind, string> = {
-  appt: 'border-espresso bg-espresso/[0.06] text-espresso',
+const CHIP: Record<MilestoneKind, string> = {
+  fixed: 'border-espresso bg-espresso/[0.06] text-espresso',
   med: 'border-terracotta-500 bg-terracotta-50 text-terracotta-600',
-  est: 'border-taupe-400 border-dashed bg-taupe-400/10 text-taupe-600',
-  call: 'border-terracotta-600 bg-terracotta-100 text-terracotta-600 font-semibold',
+  estimate: 'border-taupe-400 border-dashed bg-taupe-400/10 text-taupe-600',
+  action: 'border-terracotta-600 bg-terracotta-100 text-terracotta-600 font-semibold',
 };
-const LEGEND: { kind: EvKind; label: string }[] = [
-  { kind: 'appt', label: 'Appointment' },
+const DOT: Record<MilestoneKind, string> = {
+  fixed: 'bg-espresso',
+  med: 'bg-terracotta-500',
+  estimate: 'border border-dashed border-taupe-500 bg-transparent',
+  action: 'bg-terracotta-600',
+};
+const KIND_ORDER: Record<MilestoneKind, number> = { action: 0, fixed: 1, med: 2, estimate: 3 };
+const LEGEND: { kind: MilestoneKind; label: string }[] = [
+  { kind: 'fixed', label: 'Appointment / confirmed' },
   { kind: 'med', label: 'Medication' },
-  { kind: 'est', label: 'Estimate' },
-  { kind: 'call', label: 'Call the clinic' },
+  { kind: 'estimate', label: 'Estimate' },
+  { kind: 'action', label: 'Call the clinic' },
 ];
 
-const GLOSSARY: [string, string][] = [
-  ['OPK', 'Ovulation predictor kit — a pee stick that catches the hormone spike before ovulation.'],
-  ['LH surge', 'The hormone spike right before ovulation; the OPK is looking for it.'],
-  ['Estrace', 'Estrogen pills ("priming") so the eggs all start growing at an even size.'],
-  ['Baseline U/S', 'The first scan of the stim cycle — must be clear (no cysts) to start the shots.'],
-  ['Follistim / Menopur', 'Nightly injectable hormones that grow a batch of eggs.'],
-  ['Ganirelix', 'A morning shot that stops the eggs releasing too early.'],
-  ['Trigger', 'The final shot (hCG + Lupron) that ripens the eggs. Retrieval is ~36h later.'],
-  ['Retrieval', 'The short procedure, under sedation, to collect the eggs.'],
-];
-
-// cycle-day badge: current cycle in July, stim cycle in August (CD1 = stimStart − 1)
-function cdFor(iso: string): number | null {
-  const augCD1 = addDays(CYCLE.stimStart, -1);
-  for (const c1 of [JULY_CD1, augCD1]) {
-    if (iso >= c1) {
-      const cd = daysBetween(iso, c1) + 1;
-      if (cd >= 1 && cd <= 16) return cd;
-    }
-  }
-  return null;
+// --- glossary tooltips: any known term in running text is tap/hover-to-reveal.
+function Term({ children }: { children: string }) {
+  const [open, setOpen] = useState(false);
+  const entry = lookupTerm(children);
+  if (!entry) return <>{children}</>;
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="cursor-help underline decoration-taupe-400 decoration-dotted underline-offset-2"
+      >
+        {children}
+      </button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 z-20 mb-1.5 block w-56 max-w-[70vw] -translate-x-1/2 rounded-lg bg-espresso px-3 py-2 text-left text-[11px] font-normal normal-case leading-relaxed tracking-normal text-white shadow-lg">
+          <span className="font-semibold">{entry.term}</span> — {entry.def}
+        </span>
+      )}
+    </span>
+  );
 }
 
-function buildEvents(appts: AppointmentRow[]): Record<string, Ev[]> {
+// Splits text on glossary terms and makes each one tappable.
+function GlossaryText({ text }: { text: string }) {
+  const parts = text.split(TERM_RE);
+  return (
+    <>
+      {parts.map((p, i) => (i % 2 === 1 ? <Term key={i}>{p}</Term> : <React.Fragment key={i}>{p}</React.Fragment>))}
+    </>
+  );
+}
+
+function EstBadge() {
+  return <span className="ml-1.5 inline-block rounded-sm border border-dashed border-taupe-400 px-1 py-px align-middle text-[9px] font-medium uppercase tracking-wide text-taupe-500">est.</span>;
+}
+
+// --- inputs panel: edit → everything recomputes live -------------------------
+function CycleSettings({ value, onChange }: { value: CycleInput; onChange: (v: CycleInput) => void }) {
+  const set = (k: keyof CycleInput, v: string | number | undefined) => onChange({ ...value, [k]: v });
+  return (
+    <Card>
+      <Eyebrow className="mb-4">cycle inputs — edit and everything recomputes</Eyebrow>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <label className={labelClass}>
+          last period day 1
+          <input type="date" value={value.cd1} onChange={(e) => e.target.value && set('cd1', e.target.value)} className={inputClass} />
+        </label>
+        <label className={labelClass}>
+          cycle length (days)
+          <input
+            type="number" min={21} max={45} inputMode="numeric" value={value.cycleLength}
+            onChange={(e) => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) set('cycleLength', Math.min(45, Math.max(21, n))); }}
+            className={inputClass}
+          />
+        </label>
+        <label className={labelClass}>
+          actual +OPK (surge)
+          <input type="date" value={value.actualSurge ?? ''} onChange={(e) => set('actualSurge', e.target.value || undefined)} className={inputClass} />
+        </label>
+        <label className={labelClass}>
+          actual next day 1
+          <input type="date" value={value.actualStimCd1 ?? ''} onChange={(e) => set('actualStimCd1', e.target.value || undefined)} className={inputClass} />
+        </label>
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-taupe-500">
+        Leave the last two empty until they really happen — entering the real positive <GlossaryText text="OPK" /> or the real next Day&nbsp;1 turns the tentative dates into locked ones (clear the field to go back to estimates).
+      </p>
+    </Card>
+  );
+}
+
+// --- month grid ---------------------------------------------------------------
+type Ev = { kind: MilestoneKind; label: string; isEstimate: boolean };
+
+function buildEvents(r: CycleResult, appts: AppointmentRow[]): Record<string, Ev[]> {
   const ev: Record<string, Ev[]> = {};
   const add = (iso: string, e: Ev) => { (ev[iso] ||= []).push(e); };
-  const range = (from: string, toExcl: string, e: Ev) => {
-    for (let d = from; d < toExcl; d = addDays(d, 1)) add(d, e);
-  };
-  // medication bars (derived from the protocol windows)
-  range(CYCLE.estraceStart, CYCLE.baseline, { kind: 'med', label: 'Estrace' });
-  range(CYCLE.stimStart, CYCLE.trigger, { kind: 'med', label: 'Follistim + Menopur (pm)' });
-  range(addDays(CYCLE.stimStart, 4), CYCLE.trigger, { kind: 'med', label: 'Ganirelix (am)' });
-  // estimated milestones
-  add(addDays(CYCLE.estraceStart, -5), { kind: 'est', label: 'Likely LH surge (+OPK)' });
-  add(addDays(CYCLE.estraceStart, -3), { kind: 'est', label: 'Peak ovulation' });
-  add(CYCLE.baseline, { kind: 'call', label: 'Period likely → call to book baseline' });
-  add(addDays(CYCLE.stimStart, 3), { kind: 'est', label: 'Last day for exercise / intercourse' });
-  add(CYCLE.trigger, { kind: 'est', label: 'Possible trigger — hCG + Lupron' });
-  add(addDays(CYCLE.trigger, 1), { kind: 'est', label: 'No sex within 48h of retrieval' });
-  // overlay live appointments
-  appts.forEach((a) => {
+  // daily medication bars
+  for (const w of r.medWindows) {
+    for (let d = w.start; d < w.endExclusive; d = addDays(d, 1)) add(d, { kind: 'med', label: w.label, isEstimate: w.isEstimate });
+  }
+  // milestones (skip med *starts* — the bars above already show them)
+  for (const m of r.milestones) {
+    if (m.kind === 'med') continue;
+    add(m.date, { kind: m.kind, label: m.title, isEstimate: m.isEstimate });
+  }
+  // overlay live appointments from Notion
+  for (const a of appts) {
     const d = dISO(a.Date);
-    if (!d) return;
+    if (!d) continue;
     const label = a.Appointment || 'appointment';
-    add(d, { kind: /\bcall\b|period/i.test(label) ? 'call' : 'appt', label });
-  });
-  // sort each day's chips by kind priority
+    add(d, { kind: /\bcall\b|period/i.test(label) ? 'action' : 'fixed', label, isEstimate: false });
+  }
   Object.values(ev).forEach((list) => list.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]));
   return ev;
 }
 
-function Chip({ kind, label }: Ev) {
-  return <span className={`mt-0.5 block break-words rounded-sm border-l-2 px-1 py-0.5 text-[9.5px] leading-tight ${CHIP[kind]}`}>{label}</span>;
+function Chip({ kind, label, isEstimate }: Ev) {
+  return (
+    <span className={`mt-0.5 block break-words rounded-sm border-l-2 px-1 py-0.5 text-[9.5px] leading-tight ${CHIP[kind]} ${isEstimate && kind !== 'estimate' ? 'border-dashed' : ''}`}>
+      {isEstimate ? `~ ${label}` : label}
+    </span>
+  );
 }
 
-function MonthGrid({ y, m, events, today }: { y: number; m: number; events: Record<string, Ev[]>; today: string }) {
+function MonthGrid({ y, m, events, today, cdFor, isStimMonth }: {
+  y: number; m: number; events: Record<string, Ev[]>; today: string;
+  cdFor: (iso: string) => number | null; isStimMonth: boolean;
+}) {
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const lead = new Date(y, m, 1).getDay();
   const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7) cells.push(null);
   const iso = (day: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const subtitle = m === new Date(`${CYCLE.stimStart}T00:00:00`).getMonth() ? 'the real deal' : 'getting lined up';
   return (
     <div className="mb-6">
       <div className="mb-2 flex items-baseline gap-2">
         <h3 className="text-lg font-light tracking-tight text-espresso">{MONTH_NAMES[m]}</h3>
-        <span className="text-xs text-taupe-500">— {subtitle}</span>
+        <span className="text-xs text-taupe-500">— {isStimMonth ? 'the real deal' : 'getting lined up'}</span>
       </div>
       <div className="mb-1 grid grid-cols-7 gap-1">
         {WEEKDAYS.map((d, i) => <div key={i} className="text-center text-[10px] font-medium uppercase tracking-wide text-taupe-400">{d}</div>)}
@@ -812,19 +870,84 @@ function MonthGrid({ y, m, events, today }: { y: number; m: number; events: Reco
   );
 }
 
+// --- agenda: phone-first milestone list grouped by month ----------------------
+function Agenda({ r }: { r: CycleResult }) {
+  const today = todayISO();
+  const groups: { ym: string; items: Milestone[] }[] = [];
+  for (const m of r.milestones) {
+    const ym = m.date.slice(0, 7);
+    const g = groups[groups.length - 1];
+    if (g && g.ym === ym) g.items.push(m);
+    else groups.push({ ym, items: [m] });
+  }
+  return (
+    <div className="grid gap-5">
+      {groups.map(({ ym, items }) => (
+        <div key={ym}>
+          <h3 className="mb-1 text-lg font-light tracking-tight text-espresso">{MONTH_NAMES[Number(ym.slice(5)) - 1]}</h3>
+          <ol className="divide-y divide-line">
+            {items.map((m) => {
+              const past = m.date < today;
+              const isToday = m.date === today;
+              return (
+                <li key={m.id} className={`flex gap-3 py-2.5 ${past ? 'opacity-45' : ''}`}>
+                  <div className="w-16 shrink-0 pt-px text-right">
+                    <span className={`block text-xs font-medium ${isToday ? 'text-terracotta-600' : 'text-espresso'}`}>{compact(m.date)}</span>
+                    <span className="block text-[10px] text-taupe-400">
+                      {new Date(`${m.date}T00:00:00`).toLocaleDateString('en', { weekday: 'short' }).toLowerCase()}
+                    </span>
+                  </div>
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[m.kind]}`} aria-hidden />
+                  <div className="min-w-0">
+                    <span className="text-sm leading-snug text-espresso">
+                      <GlossaryText text={m.title} />
+                      {m.isEstimate && <EstBadge />}
+                    </span>
+                    {m.note && <p className="mt-0.5 text-xs leading-relaxed text-taupe-500"><GlossaryText text={m.note} /></p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Calendar() {
+  const [input, setInput] = useState<CycleInput>(loadCycleInput);
+  const update = (v: CycleInput) => { setInput(v); saveCycleInput(v); };
+  const r = useMemo(() => computeCycle(input), [input]);
   const { data, loading } = useAsync(() => api.listDb('appointments', 'Date', 'asc'), []);
   const appts = (data as AppointmentRow[] | null) || [];
   const today = todayISO();
-  const events = buildEvents(appts);
+  const events = useMemo(() => buildEvents(r, appts), [r, data]);
 
-  // months spanned by the cycle (OPK start → retrieval)
+  // cycle-day badge: current cycle from cd1, stim cycle from the (real or
+  // estimated) next Day 1 — the stim cycle wins once it starts.
+  const cdFor = (iso: string): number | null => {
+    if (iso >= r.stimCd1) {
+      const cd = diffDays(iso, r.stimCd1) + 1;
+      return cd <= 20 ? cd : null;
+    }
+    if (iso >= input.cd1) {
+      const cd = diffDays(iso, input.cd1) + 1;
+      return cd <= input.cycleLength ? cd : null;
+    }
+    return null;
+  };
+
+  // months spanned by the cycle (CD1 → retrieval)
   const months: { y: number; m: number }[] = [];
-  const first = new Date(`${CYCLE.opkStart}T00:00:00`);
-  const last = new Date(`${CYCLE.retrieval}T00:00:00`);
+  const first = new Date(`${input.cd1}T00:00:00`);
+  const last = new Date(`${r.retrievalEstimate}T00:00:00`);
   for (let c = new Date(first.getFullYear(), first.getMonth(), 1); c <= last; c = new Date(c.getFullYear(), c.getMonth() + 1, 1)) {
     months.push({ y: c.getFullYear(), m: c.getMonth() });
   }
+  const stimMonth = Number(r.stimCd2.slice(5, 7)) - 1;
+  const stimYear = Number(r.stimCd2.slice(0, 4));
+  const primingMonth = MONTH_NAMES[first.getMonth()];
 
   return (
     <div className="grid gap-6">
@@ -833,11 +956,15 @@ export function Calendar() {
           <Eyebrow>the plain-english version</Eyebrow>
           <p className="mt-3 text-sm leading-relaxed text-taupe-600">
             The goal is to grow a batch of eggs, then collect them.{' '}
-            <span className="font-medium text-espresso">July</span> is lining Nina's body up — pee-stick tests to catch ovulation, then estrogen pills to even things out.{' '}
-            <span className="font-medium text-espresso">August</span> is the real deal — nightly belly shots to grow the eggs, quick scans to watch them, one final trigger shot, then retrieval about two days later.
+            <span className="font-medium text-espresso">{primingMonth}</span> is lining Nina's body up — <GlossaryText text="OPK" /> pee-stick tests to catch ovulation, then <GlossaryText text="Estrace" /> pills to even things out.{' '}
+            <span className="font-medium text-espresso">{MONTH_NAMES[stimMonth]}</span> is the real deal — nightly belly shots (<GlossaryText text="Follistim 300 / Menopur 150" />) to grow the eggs, quick scans to watch them, one final <GlossaryText text="trigger" /> shot, then <GlossaryText text="retrieval" /> about two days later.
           </p>
-          <p className="mt-3 rounded-xl bg-sand px-3.5 py-2.5 text-xs leading-relaxed text-taupe-600">
-            Every August date is an <span className="font-medium text-terracotta-600">estimate</span> — the clinic sets the real dates from the scans once Nina's next period arrives. Call the coordinator (650-498-7911, opt 3/2) the day it starts.
+          <p className="mt-3 rounded-xl bg-terracotta-50 px-3.5 py-2.5 text-xs leading-relaxed text-taupe-600">
+            {r.stimCd1IsActual ? (
+              <>Anchored on the <span className="font-medium text-terracotta-600">real Cycle Day 1</span> — but the trigger and retrieval dates still depend on the monitoring scans. The clinic sets those.</>
+            ) : (
+              <>These dates are <span className="font-medium text-terracotta-600">estimates</span> until Nina's real surge + next period are entered above. The clinic sets the real dates — call <a href="tel:+16504987911" className="font-medium text-terracotta-600 underline underline-offset-2">650-498-7911</a> (opt 3/2) on Day&nbsp;1.</>
+            )}
           </p>
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
             {LEGEND.map((l) => (
@@ -850,21 +977,37 @@ export function Calendar() {
       </Reveal>
 
       <Reveal delay={0.05}>
+        <CycleSettings value={input} onChange={update} />
+      </Reveal>
+
+      <Reveal delay={0.08}>
         <Card>
-          {loading && <div className="mb-3"><Loading /></div>}
-          {months.map((mo) => <MonthGrid key={`${mo.y}-${mo.m}`} y={mo.y} m={mo.m} events={events} today={today} />)}
-          <p className="text-[11px] leading-relaxed text-taupe-500">Prenatal vitamin (≥400mcg folic acid) daily throughout. CD = cycle day, counted from the first day of the period.</p>
+          <Eyebrow className="mb-4">milestones</Eyebrow>
+          <Agenda r={r} />
+          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-taupe-500">
+            {r.ongoing.map((o) => <span key={o.id}><GlossaryText text={o.label} /> from {compact(o.from)} onward, every day.</span>)}
+          </p>
         </Card>
       </Reveal>
 
       <Reveal delay={0.1}>
         <Card>
+          {loading && <div className="mb-3"><Loading /></div>}
+          {months.map((mo) => (
+            <MonthGrid key={`${mo.y}-${mo.m}`} y={mo.y} m={mo.m} events={events} today={today} cdFor={cdFor} isStimMonth={mo.m === stimMonth && mo.y === stimYear} />
+          ))}
+          <p className="text-[11px] leading-relaxed text-taupe-500"><GlossaryText text="CD" /> = cycle day, counted from the first day of the period. Dashed chips (~) are still estimates.</p>
+        </Card>
+      </Reveal>
+
+      <Reveal delay={0.12}>
+        <Card>
           <Eyebrow>what the words mean</Eyebrow>
           <dl className="mt-3 divide-y divide-line">
-            {GLOSSARY.map(([term, def]) => (
-              <div key={term} className="grid grid-cols-[104px_1fr] gap-3 py-2.5">
-                <dt className="text-xs font-medium text-terracotta-600">{term}</dt>
-                <dd className="text-xs leading-relaxed text-taupe-600">{def}</dd>
+            {GLOSSARY.map((g) => (
+              <div key={g.term} className="grid grid-cols-[130px_1fr] gap-3 py-2.5">
+                <dt className="text-xs font-medium text-terracotta-600">{g.term}</dt>
+                <dd className="text-xs leading-relaxed text-taupe-600">{g.def}</dd>
               </div>
             ))}
           </dl>
