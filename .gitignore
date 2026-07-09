@@ -4,6 +4,10 @@ dist
 .DS_Store
 .env
 .env.*
+.vercel
+.qa-shots
 
 mouha/__pycache__
 *.pyc
+
+package-lock.json

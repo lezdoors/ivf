@@ -53,6 +53,8 @@ SCHEMAS = {
     "medications": {"Medication": "title", "Dose": "rich_text", "Frequency": "rich_text",
                     "Purpose": "rich_text", "Insurance Status": "select", "Qty Left": "number",
                     "Refills": "number", "Start Date": "date", "End Date": "date", "Notes": "rich_text"},
+    "labResults": {"Test": "title", "Date": "date", "Value": "number", "Units": "rich_text",
+                   "Reference Range": "rich_text", "Notes": "rich_text"},
     "copilotQueue": {"Id": "title", "Question": "rich_text", "Answer": "rich_text",
                      "Conversation": "rich_text", "Status": "select"},
 }
@@ -166,7 +168,7 @@ def send_slack(text):
 TOOLS = [
     {"type": "function", "function": {"name": "query_db", "description": "List rows from a database. db is one of: " + ", ".join(DB),
         "parameters": {"type": "object", "properties": {"db": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["db"]}}},
-    {"type": "function", "function": {"name": "add_row", "description": "Create a row. Use exact field names from the schema (e.g. journal: Entry,Date,Author,Feeling,Mood,Symptoms,Notes; monitoring: Scan,Date,Cycle Day,E2,LH,P4,Lining (mm),Lead Follicle (mm),Follicles Left,Follicles Right,Notes; appointments: Appointment,Date,Provider,Clinic,Purpose,Prep).",
+    {"type": "function", "function": {"name": "add_row", "description": "Create a row. Use exact field names from the schema (e.g. journal: Entry,Date,Author,Feeling,Mood,Symptoms,Notes; monitoring: Scan,Date,Cycle Day,E2,LH,P4,Lining (mm),Lead Follicle (mm),Follicles Left,Follicles Right,Notes; appointments: Appointment,Date,Provider,Clinic,Purpose,Prep,Results,Follow-up; labResults: Test,Date,Value,Units,Reference Range,Notes — one row per lab metric). Before adding, query_db first and avoid creating a duplicate of an existing row.",
         "parameters": {"type": "object", "properties": {"db": {"type": "string"}, "fields": {"type": "object"}}, "required": ["db", "fields"]}}},
     {"type": "function", "function": {"name": "update_row", "description": "Update an existing row by page_id.",
         "parameters": {"type": "object", "properties": {"page_id": {"type": "string"}, "db": {"type": "string"}, "fields": {"type": "object"}}, "required": ["page_id", "db", "fields"]}}},
@@ -179,10 +181,16 @@ DISPATCH = {"query_db": query_db, "add_row": add_row, "update_row": update_row, 
 SYSTEM = (
     "You are Dr. Sherpa, the IVF guide for Ryan & Nina, who are going through an IVF retrieval cycle at Stanford "
     "(Dr. Amin Milki, planned start ~July 5 2026, authorization expires Dec 6 2026). "
-    "You help by answering questions from their Notion databases and by logging data for them. "
+    "You can see their whole app: query_db reads any database — today's phase, monitoring scans (E2/follicles), "
+    "appointments, medications, journal, and labResults (bloodwork, semen analysis, genetics). "
+    "Known so far: Ryan's semen analysis (Jul 6 2026) is in labResults and is normal on all WHO 6th parameters "
+    "(only viscosity/liquefaction abnormal — low clinical significance). To answer questions about labs or upcoming "
+    "visits, query the relevant database first rather than guessing. "
+    "You help by answering from their databases and by logging data for them. "
     "You may read any database, add or update rows, and send Slack messages without asking — but be accurate "
-    "and concise, use exact Notion field names, and confirm what you did in your final answer. "
-    "Dates are ISO YYYY-MM-DD. When they tell you scan numbers, log them to 'monitoring'. "
+    "and concise, use exact Notion field names, and always query_db before adding a row so you never create a "
+    "duplicate (there is one shared hub; two agents write to it). Confirm what you did in your final answer. "
+    "Dates are ISO YYYY-MM-DD. When they tell you scan numbers, log them to 'monitoring'; lab values to 'labResults'. "
     "Never invent medical advice; stick to their data and logistics. Keep answers short and warm."
 )
 
