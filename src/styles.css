@@ -23,6 +23,12 @@
   body {
     @apply bg-sand text-espresso antialiased;
     font-feature-settings: 'tnum' 1, 'cv11' 1;
+    /* installed PWA draws edge-to-edge (viewport-fit=cover): keep the header
+       out from under the status bar / Dynamic Island and above the home bar */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   label {
     @apply grid gap-1.5 text-xs font-medium text-taupe-600;
