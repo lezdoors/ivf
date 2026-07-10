@@ -42,7 +42,7 @@ function Gate({ onIn }: { onIn: () => void }) {
         <p className="mb-4 text-sm text-taupe-500">your private IVF companion.</p>
         <form onSubmit={submit} className="grid w-full gap-2.5">
           <input
-            type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="passcode" autoFocus
+            type="password" inputMode="numeric" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="passcode" autoFocus
             className="min-h-[46px] w-full rounded-xl px-4 text-center text-sm text-espresso card-inset focus:shadow-[inset_0_0_0_1.5px_theme(colors.terracotta.400)]"
           />
           <button
@@ -58,9 +58,23 @@ function Gate({ onIn }: { onIn: () => void }) {
   );
 }
 
+// Each member gets their own quiet accent — Nina raspberry, Ryan sage, shared
+// stays espresso. Colors come from Nina's hummingbird painting.
+const USER_PILL: Record<User, string> = { Nina: 'bg-raspberry-500', Ryan: 'bg-sage-600', Both: 'bg-espresso' };
+const MEMBER_KEY = 'ivf-member';
+
 function App() {
   const [authed, setAuthed] = useState(Boolean(api.getPass()));
-  const [user, setUser] = useState<User>('Nina');
+  const [user, setUserState] = useState<User>(() => {
+    try {
+      const m = localStorage.getItem(MEMBER_KEY);
+      return m === 'Ryan' || m === 'Nina' || m === 'Both' ? (m as User) : 'Nina';
+    } catch { return 'Nina'; }
+  });
+  const setUser = (u: User) => {
+    setUserState(u);
+    try { localStorage.setItem(MEMBER_KEY, u); } catch { /* ignore */ }
+  };
   const [tab, setTab] = useState<Tab>('today');
 
   if (!authed) return <Gate onIn={() => setAuthed(true)} />;
@@ -83,7 +97,7 @@ function App() {
               }`}
             >
               {user === u && (
-                <motion.span layoutId="userPill" className="absolute inset-0 -z-10 rounded-full bg-espresso" transition={{ duration: 0.4, ease: EASE }} />
+                <motion.span layoutId="userPill" className={`absolute inset-0 -z-10 rounded-full ${USER_PILL[u]}`} transition={{ duration: 0.4, ease: EASE }} />
               )}
               {u === 'Both' ? 'shared' : u.toLowerCase()}
             </button>

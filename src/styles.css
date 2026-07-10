@@ -6,6 +6,20 @@
   html {
     scroll-behavior: smooth;
   }
+  /* every tappable thing compresses slightly under the finger — cheap native feel */
+  button {
+    touch-action: manipulation;
+    cursor: pointer;
+    transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  button:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button:active:not(:disabled) {
+      transform: none;
+    }
+  }
   body {
     @apply bg-sand text-espresso antialiased;
     font-feature-settings: 'tnum' 1, 'cv11' 1;
@@ -48,6 +62,20 @@
   .btn-primary {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-espresso px-5 text-sm font-medium text-white transition-opacity disabled:opacity-50;
   }
+  /* the hummingbird hovers over the newest bloom in the garden */
+  .hb-float {
+    animation: hb-float 3.2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hb-float {
+      animation: none;
+    }
+  }
+}
+
+@keyframes hb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3.5px); }
 }
 
 /* iOS Safari auto-zooms into any focused <input> whose font-size is < 16px,

@@ -51,7 +51,12 @@ export function Sparkline({ values, stroke = '#B8735A', fill = 'rgba(184,115,90,
 }
 
 // --- date helpers ------------------------------------------------------------
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+// LOCAL date, never UTC: with toISOString() the app flipped to "tomorrow" at
+// 5pm Pacific — exactly when the evening injections are due.
+export const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 export const dISO = (v?: string) => (v ? v.slice(0, 10) : '');
 export function compact(iso?: string) {
   if (!iso) return '—';

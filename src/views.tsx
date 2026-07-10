@@ -85,19 +85,91 @@ function ErrorNote({ error }: { error: string }) {
   );
 }
 
+// ---- Today checklist ----------------------------------------------------------
+// The one question a companion must answer every morning: what do we do today?
+// Items derive from the cycle engine (meds windows, OPK window) + today's
+// appointments. Check state is device-local per day.
+type TodayItem = { id: string; label: string; sub?: string };
+
+function todayItems(r: CycleResult, appts: AppointmentRow[]): TodayItem[] {
+  const t = todayISO();
+  const items: TodayItem[] = [];
+  if (!r.surgeIsActual && t >= r.opkStart && t <= r.estimatedSurge) {
+    items.push({ id: 'opk', label: 'OPK test', sub: 'first morning pee — when it turns positive, enter the date on the calendar tab' });
+  }
+  if (t >= r.estraceStart && t < r.stimCd2) items.push({ id: 'estrace', label: 'Estrace', sub: 'estrogen priming — daily until the baseline scan' });
+  if (t >= r.day5Ultrasound && t < r.triggerEstimate) items.push({ id: 'ganirelix', label: 'Ganirelix', sub: 'morning, same time each day' });
+  if (t >= r.stimCd2 && t <= r.triggerEstimate) items.push({ id: 'stims', label: 'Follistim 300 + Menopur 150', sub: 'evening (PM), subcutaneous' });
+  items.push({ id: 'prenatal', label: 'Prenatal vitamin', sub: '400mcg+ folic acid' });
+  items.push({ id: 'coq10', label: 'CoQ10 400mg' });
+  for (const a of appts) {
+    if (dISO(a.Date) === t) items.push({ id: `appt-${a.id}`, label: a.Appointment || 'Appointment', sub: [a.Prep, a.Clinic].filter(Boolean).join(' · ') || 'appointment today' });
+  }
+  return items;
+}
+
+const checksKey = () => `ivf-checks-${todayISO()}`;
+function loadChecks(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(checksKey()) || '{}'); } catch { return {}; }
+}
+
+function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] }) {
+  const items = todayItems(r, appts);
+  const [checks, setChecks] = useState<Record<string, boolean>>(loadChecks);
+  const toggle = (id: string) => setChecks((c) => {
+    const next = { ...c, [id]: !c[id] };
+    try { localStorage.setItem(checksKey(), JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
+  const done = items.filter((i) => checks[i.id]).length;
+  const allDone = items.length > 0 && done === items.length;
+  return (
+    <Card>
+      <div className="mb-3 flex items-baseline justify-between">
+        <Eyebrow>today · {compact(todayISO())}</Eyebrow>
+        <span className={`text-xs ${allDone ? 'font-medium text-sage-500' : 'text-taupe-500'}`}>{allDone ? 'all done — rest easy' : `${done} of ${items.length}`}</span>
+      </div>
+      <div className="divide-y divide-line">
+        {items.map((i) => {
+          const isDone = !!checks[i.id];
+          return (
+            <button
+              key={i.id} type="button" onClick={() => toggle(i.id)} aria-pressed={isDone}
+              className="flex w-full items-center gap-3.5 py-3 text-left first:pt-0 last:pb-0"
+            >
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full transition-colors duration-150 ${isDone ? 'bg-sage-500' : 'bg-white card-inset'}`} aria-hidden>
+                {isDone && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className={`block text-sm font-medium transition-colors duration-150 ${isDone ? 'text-taupe-400' : 'text-espresso'}`}>{i.label}</span>
+                {i.sub && <span className={`block text-xs leading-snug ${isDone ? 'text-taupe-400/70' : 'text-taupe-500'}`}>{i.sub}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 // ---- Dashboard --------------------------------------------------------------
 export function Dashboard({ user }: { user: User }) {
   const cycle = useMemo(() => computeCycle(loadCycleInput()), []);
   const appts = useAsync(() => api.listDb('appointments', 'Date', 'asc'), []);
   const mon = useAsync(() => api.listDb('monitoring', 'Date', 'desc'), []);
+  const apptRows = (appts.data as AppointmentRow[] | null) || [];
   const authLeft = daysUntil(HUB.authExpires);
   const authCritical = authLeft != null && authLeft < 45;
-  const nextAppt = (appts.data as AppointmentRow[] | null)?.find((a) => (dISO(a.Date) || '9999') >= todayISO());
+  const nextAppt = apptRows.find((a) => (dISO(a.Date) || '9999') >= todayISO());
   const latest = (mon.data as MonitoringRow[] | null)?.[0];
+  const t = todayISO();
+  const nextMilestone = cycle.milestones.find((m) => m.date > t);
 
   const stats = [
-    { icon: CalendarDays, value: compact(cycle.stimCd2), label: cycle.stimCd1IsActual ? 'stim start' : 'stim start (est.)', critical: false },
-    { icon: AlertTriangle, value: `${authLeft}d`, label: `auth expires ${compact(HUB.authExpires)}`, critical: authCritical },
+    { icon: CalendarDays, value: nextMilestone ? `${diffDays(nextMilestone.date, t)}d` : '—', label: nextMilestone ? `${nextMilestone.title.split('—')[0].trim().toLowerCase()} · ${compact(nextMilestone.date)}` : 'no upcoming milestone', critical: false },
+    { icon: Syringe, value: compact(cycle.stimCd2), label: cycle.stimCd1IsActual ? 'stim start' : 'stim start (est.)', critical: false },
     { icon: HeartPulse, value: latest?.['Lead Follicle (mm)'] ?? '—', label: 'lead follicle mm', critical: false },
     { icon: FlaskConical, value: latest?.E2 ?? '—', label: 'latest E2', critical: false },
   ];
@@ -123,9 +195,13 @@ export function Dashboard({ user }: { user: User }) {
         </div>
       </Reveal>
 
+      <Reveal delay={0.12}>
+        <TodayChecklist r={cycle} appts={apptRows} />
+      </Reveal>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map((s, i) => (
-          <Reveal key={s.label} delay={0.08 + i * 0.05}>
+          <Reveal key={s.label} delay={0.18 + i * 0.05}>
             <Card className="flex h-full flex-col gap-2">
               <s.icon size={16} className={s.critical ? 'text-terracotta-500' : 'text-taupe-400'} />
               <strong className={`text-2xl font-light leading-none tracking-tight ${s.critical ? 'text-terracotta-500' : 'text-espresso'}`}>{s.value}</strong>
@@ -135,31 +211,36 @@ export function Dashboard({ user }: { user: User }) {
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-        <Reveal delay={0.3}>
-          <Card className="h-full">
-            <Eyebrow className="mb-4">next appointment</Eyebrow>
-            {appts.loading ? <Loading /> : appts.error ? <ErrorNote error={appts.error} /> : nextAppt ? (
-              <div>
-                <strong className="text-base font-medium text-espresso">{nextAppt.Appointment}</strong>
-                <p className="mt-2 text-sm text-taupe-600">{longDate(nextAppt.Date)} · {nextAppt.Provider} · {nextAppt.Clinic}</p>
-                {nextAppt.Prep && <p className="mt-1 text-sm text-taupe-500">prep: {nextAppt.Prep}</p>}
-              </div>
-            ) : <p className="text-sm text-taupe-500">nothing upcoming.</p>}
-          </Card>
-        </Reveal>
+      <Reveal delay={0.34}>
+        <Card>
+          <Eyebrow className="mb-4">next appointment</Eyebrow>
+          {appts.loading ? <Loading /> : appts.error ? <ErrorNote error={appts.error} /> : nextAppt ? (
+            <div>
+              <strong className="text-base font-medium text-espresso">{nextAppt.Appointment}</strong>
+              <p className="mt-2 text-sm text-taupe-600">{longDate(nextAppt.Date)} · {[nextAppt.Provider, nextAppt.Clinic].filter(Boolean).join(' · ')}</p>
+              {nextAppt.Prep && <p className="mt-1 text-sm text-taupe-500">prep: {nextAppt.Prep}</p>}
+            </div>
+          ) : <p className="text-sm text-taupe-500">nothing upcoming.</p>}
+        </Card>
+      </Reveal>
 
-        <Reveal delay={0.36}>
-          <Card className="h-full">
-            <Eyebrow className="mb-4 flex items-center gap-2">
-              <AlertTriangle size={13} className="text-terracotta-500" /> top risks
+      {/* Insurance/admin lives folded away — visible when it needs action, never
+          ambient anxiety on a calm screen. */}
+      <Reveal delay={0.4}>
+        <details open={authCritical} className="group rounded-2xl bg-white p-6 card-inset sm:p-8">
+          <summary className="flex cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+            <Eyebrow className="flex items-center gap-2">
+              {authCritical && <AlertTriangle size={13} className="text-terracotta-500" />} insurance &amp; admin
             </Eyebrow>
-            <ul className="divide-y divide-line">
-              {HUB.risks.map((r) => <li key={r} className="py-2.5 text-sm leading-relaxed text-taupe-600 first:pt-0 last:pb-0">{r}</li>)}
-            </ul>
-          </Card>
-        </Reveal>
-      </div>
+            <span className={`text-xs ${authCritical ? 'font-medium text-terracotta-500' : 'text-taupe-400'}`}>
+              auth expires {compact(HUB.authExpires)} · {authLeft}d {authCritical ? '— act soon' : ''}
+            </span>
+          </summary>
+          <ul className="mt-4 divide-y divide-line">
+            {HUB.risks.map((r) => <li key={r} className="py-2.5 text-sm leading-relaxed text-taupe-600 first:pt-0 last:pb-0">{r}</li>)}
+          </ul>
+        </details>
+      </Reveal>
     </div>
   );
 }
@@ -254,7 +335,11 @@ export function Monitoring() {
       <Reveal delay={0.1}>
         <Card>
           <Eyebrow className="mb-5">monitoring log</Eyebrow>
-          {loading ? <Loading /> : error ? <ErrorNote error={error} /> : rows.length === 0 ? <p className="text-sm text-taupe-500">no scans yet.</p> : (
+          {loading ? <Loading /> : error ? <ErrorNote error={error} /> : rows.length === 0 ? (
+            <p className="text-sm leading-relaxed text-taupe-500">
+              nothing here yet — and that's right on schedule. scans begin at the baseline ultrasound (~{compact(computeCycle(loadCycleInput()).stimCd2)}); every one you log will trend here.
+            </p>
+          ) : (
             <div className="-mx-2 overflow-x-auto px-2">
               <table className="w-full min-w-[560px] border-collapse text-sm">
                 <thead>
@@ -282,13 +367,140 @@ export function Monitoring() {
   );
 }
 
-// ---- Journal (+ year garden, per-user private) ------------------------------
-const YEAR = new Date().getFullYear();
-const YEAR_START = `${YEAR}-01-01`;
-const YEAR_DAYS = 365;
-function dayOfYear(iso?: string) {
-  if (!iso) return -1;
-  return Math.floor((new Date(`${dISO(iso)}T00:00:00`).getTime() - new Date(`${YEAR_START}T00:00:00`).getTime()) / 86400000);
+// ---- Journal (+ the cycle garden, per-user private) ---------------------------
+// The garden grows along the CYCLE, not the calendar year. One slot per cycle
+// day; each journal entry grows a small watercolor bloom — raspberry for Nina,
+// sage for Ryan, terracotta when shared. Empty days are soil, not deficits.
+// Nina's hummingbird visits the newest bloom.
+const BLOOM: Record<string, { petal: string; heart: string }> = {
+  Nina: { petal: '#8B3348', heart: '#A44458' },
+  Ryan: { petal: '#676536', heart: '#8A8A5E' },
+  Both: { petal: '#B8735A', heart: '#C98868' },
+};
+const DAY_W = 26;
+const G_H = 148;
+const SOIL_Y = 106;
+
+// NOTE: CSS `transform`/`animation` on an SVG element OVERRIDES its transform
+// attribute — so positioning lives on an OUTER <g> and any animated styles go
+// on an INNER <g>, never the same element.
+function GardenBloom({ x, author, tall, delay }: { x: number; author: string; tall: number; delay: number }) {
+  const c = BLOOM[author] || BLOOM.Both;
+  const h = 26 + tall * 8; // stem height varies gently so the bed feels organic
+  return (
+    <g transform={`translate(${x},${SOIL_Y})`}>
+      <g style={{ opacity: 0, animation: `bloomIn .5s cubic-bezier(.22,1,.36,1) ${delay}s forwards` }}>
+        <path d={`M0,0 C0,${-h * 0.5} ${tall % 2 ? 2 : -2},${-h * 0.72} 0,${-h}`} stroke="#6B7050" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        <ellipse cx={-5.5} cy={-h - 3.5} rx={6} ry={8.5} fill={c.petal} opacity=".5" transform={`rotate(-26 ${-5.5} ${-h - 3.5})`} />
+        <ellipse cx={5.5} cy={-h - 3.5} rx={6} ry={8.5} fill={c.petal} opacity=".5" transform={`rotate(26 ${5.5} ${-h - 3.5})`} />
+        <ellipse cx={0} cy={-h - 7} rx={6} ry={9.5} fill={c.heart} opacity=".82" />
+      </g>
+    </g>
+  );
+}
+
+function Hummingbird({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x - 18},${y})`}>
+      <g className="hb-float">
+        <path d="M2 10 C6 4 14 2 20 6 C26 2 34 4 36 10 C30 8 26 9 22 12 C18 15 14 15 10 12 C7 10 4 10 2 10 Z" fill="#5E5A50" opacity=".85" />
+        <path d="M20 6 C18 -2 24 -6 28 -4 C24 0 23 3 22 7 Z" fill="#8B8178" opacity=".8" />
+        <path d="M2 10 L-7 12.5" stroke="#33241D" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="9" cy="8" r="1" fill="#33241D" />
+      </g>
+    </g>
+  );
+}
+
+function CycleGarden({ entries, user }: { entries: JournalRow[]; user: User }) {
+  const input = loadCycleInput();
+  const r = useMemo(() => computeCycle(input), [input.cd1, input.cycleLength, input.actualSurge, input.actualStimCd1]);
+  const scroller = React.useRef<HTMLDivElement>(null);
+  const today = todayISO();
+  const start = input.cd1;
+  const end = addDays(r.retrievalEstimate, 4);
+  const nDays = diffDays(end, start) + 1;
+  const days = Array.from({ length: nDays }, (_, i) => addDays(start, i));
+  const xFor = (iso: string) => 20 + diffDays(iso, start) * DAY_W;
+
+  // newest entry per day wins the slot; the freshest overall gets the bird
+  const byDate = new Map<string, JournalRow>();
+  let newest: string | null = null;
+  for (const e of entries) {
+    const d = dISO(e.Date);
+    if (d >= start && d <= end) {
+      byDate.set(d, e);
+      if (!newest || d > newest) newest = d;
+    }
+  }
+  const blooms = [...byDate.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+  const markers = [
+    { date: r.stimCd2, label: 'baseline' },
+    { date: r.triggerEstimate, label: 'trigger' },
+    { date: r.retrievalEstimate, label: 'retrieval' },
+  ];
+
+  React.useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const target = xFor(newest || today) - el.clientWidth / 2;
+    el.scrollLeft = Math.max(0, target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newest]);
+
+  const width = nDays * DAY_W + 40;
+  return (
+    <Card>
+      <div className="mb-2 flex items-baseline justify-between">
+        <Eyebrow>this cycle's garden</Eyebrow>
+        <span className="text-sm text-taupe-500">
+          {blooms.length === 0 ? 'ready for its first bloom' : <><strong className="font-medium text-espresso">{blooms.length}</strong> {blooms.length === 1 ? 'bloom' : 'blooms'}</>}
+        </span>
+      </div>
+      <div ref={scroller} className="no-scrollbar -mx-2 overflow-x-auto px-2">
+        <svg width={width} height={G_H} viewBox={`0 0 ${width} ${G_H}`} role="img" aria-label={`Cycle garden: ${blooms.length} journal entries as blooms between ${compact(start)} and ${compact(end)}`}>
+          <style>{'@keyframes bloomIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}'}</style>
+          {/* soil */}
+          <line x1={12} y1={SOIL_Y} x2={width - 12} y2={SOIL_Y} stroke="#D8CFC2" strokeWidth="1.5" strokeLinecap="round" />
+          {days.map((d, i) => {
+            if (byDate.has(d)) return null;
+            const future = d > today;
+            return <circle key={d} cx={20 + i * DAY_W} cy={SOIL_Y} r={2.2} fill={future ? '#E5DED3' : '#CBC1B2'} />;
+          })}
+          {/* milestone markers — labels stagger so close dates don't collide */}
+          {markers.map((m, mi) => (m.date >= start && m.date <= end) && (
+            <g key={m.label} transform={`translate(${xFor(m.date)},0)`}>
+              <line x1={0} y1={14 + (mi % 2) * 12 + 4} x2={0} y2={SOIL_Y - 4} stroke="#C98868" strokeWidth="1.2" strokeDasharray="3 4" opacity=".7" />
+              <text x={0} y={12 + (mi % 2) * 12} textAnchor="middle" fontSize="9" fontWeight="600" letterSpacing=".08em" fill="#9C5D47">{m.label.toUpperCase()}</text>
+            </g>
+          ))}
+          {/* blooms */}
+          {blooms.map(([d, e], i) => (
+            <GardenBloom key={d} x={xFor(d)} author={e.Author || (user === 'Both' ? 'Both' : user)} tall={(diffDays(d, start) * 7) % 3} delay={Math.min(i * 0.06, 0.8)} />
+          ))}
+          {/* the hummingbird visits the newest bloom */}
+          {newest && <Hummingbird x={xFor(newest) + 30} y={SOIL_Y - 78} />}
+          {/* day labels: today + weekly cycle days */}
+          {days.map((d, i) => {
+            const isToday = d === today;
+            if (!isToday && i % 7 !== 0) return null;
+            return (
+              <text key={`l${d}`} x={20 + i * DAY_W} y={G_H - 22} textAnchor="middle" fontSize="9" fontWeight={isToday ? 700 : 500} fill={isToday ? '#B8735A' : '#A79E93'}>
+                {isToday ? 'today' : compact(d)}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+      <p className="mt-2 text-center text-xs text-taupe-500">
+        {blooms.length === 0
+          ? 'write your first page below — it plants the first bloom.'
+          : user === 'Both'
+            ? 'every page either of you writes grows here — raspberry is nina, sage is ryan, terracotta is shared.'
+            : `${user.toLowerCase()}'s garden — your pages and shared ones. the bird keeps the newest company.`}
+      </p>
+    </Card>
+  );
 }
 
 export function Journal({ user }: { user: User }) {
@@ -301,9 +513,6 @@ export function Journal({ user }: { user: User }) {
   const [form, setForm] = useState<Record<string, any>>({ Date: todayISO(), Feeling: 'Soft', Mood: 'Okay' });
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
-
-  const grown = new Map<number, JournalRow>();
-  for (const r of visible) { const d = dayOfYear(r.Date); if (d >= 0 && d < YEAR_DAYS) grown.set(d, r); }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,26 +536,10 @@ export function Journal({ user }: { user: User }) {
 
   return (
     <div className="grid gap-3 sm:gap-4">
-      <Reveal>
-        <Card>
-          <div className="mb-5 flex items-center justify-between">
-            <span className="rounded-full bg-sand px-3 py-1 text-xs font-medium text-espresso card-inset">{YEAR}</span>
-            <span className="text-sm text-taupe-500"><strong className="font-medium text-espresso">{grown.size}</strong>/{YEAR_DAYS} days planted</span>
-          </div>
-          <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(21,minmax(0,1fr))]">
-            {Array.from({ length: YEAR_DAYS }, (_, i) => {
-              const g = grown.get(i);
-              return (
-                <div
-                  key={i}
-                  title={g ? `${dISO(g.Date)} · ${g.Feeling}` : ''}
-                  className={`aspect-square rounded-[3px] ${g ? 'bg-terracotta-400' : 'bg-sand card-inset'}`}
-                />
-              );
-            })}
-          </div>
-          <p className="mt-4 text-center text-xs text-taupe-500">{user === 'Both' ? 'every journaled day — both of you — plants something.' : `${user}'s private garden. only you and shared "both" entries.`}</p>
-        </Card>
+      {/* min-w-0: the garden's wide SVG must scroll inside its card, not widen
+          the grid track (grid items default to min-width:auto). */}
+      <Reveal className="min-w-0">
+        <CycleGarden entries={visible} user={user} />
       </Reveal>
 
       <Reveal delay={0.1}>
@@ -494,6 +687,7 @@ const INS_COLOR: Record<string, string> = {
 };
 const INS_OPTIONS = ['Covered', 'Preauth needed', 'Not covered', 'Unknown'];
 export function Meds() {
+  const cycle = useMemo(() => computeCycle(loadCycleInput()), []);
   const { data, error, loading, reload } = useAsync(() => api.listDb('medications'), []);
   const rows = (data as MedicationRow[] | null) || [];
   const [form, setForm] = useState<Record<string, any>>({});
@@ -516,6 +710,9 @@ export function Meds() {
   return (
     <div className="grid gap-3 sm:gap-4">
       <Reveal>
+        <TodayChecklist r={cycle} appts={[]} />
+      </Reveal>
+      <Reveal delay={0.08}>
         <Card>
           <Eyebrow className="mb-5 flex items-center gap-2"><Pill size={13} /> add medication</Eyebrow>
           <form className="grid gap-3" onSubmit={save}>
@@ -631,14 +828,20 @@ export function Records() {
 }
 
 // ---- Agent ------------------------------------------------------------------
+const SHERPA_CHIPS = [
+  "what's happening this week?",
+  'explain Ganirelix',
+  'prep me for the next appointment',
+  'what happens after retrieval?',
+];
+
 export function Agent({ user }: { user: User }) {
   const [q, setQ] = useState('');
   const [thread, setThread] = useState<{ q: string; a?: string; status: string }[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const question = q.trim();
+  const ask = async (raw: string) => {
+    const question = raw.trim();
     if (!question || busy) return;
     setQ('');
     setBusy(true);
@@ -669,7 +872,18 @@ export function Agent({ user }: { user: User }) {
             <p className="text-sm text-taupe-500">your IVF guide — answers questions, logs scans/appointments, and can send Slack. every action is recorded so you can see exactly what it did.</p>
           </div>
           <div className="grid min-h-[100px] gap-3">
-            {thread.length === 0 && <p className="text-xs text-taupe-400">try: "what's my next appointment?" · "log E2 420 lead follicle 14 today" · "remind us on slack about the semen analysis"</p>}
+            {thread.length === 0 && (
+              <div className="flex flex-wrap gap-2">
+                {SHERPA_CHIPS.map((c) => (
+                  <button
+                    key={c} type="button" onClick={() => ask(c)} disabled={busy}
+                    className="rounded-full bg-sand px-3.5 py-2 text-xs font-medium text-taupe-600 card-inset transition-colors hover:text-espresso disabled:opacity-50"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
             {thread.map((m, i) => (
               <div key={i} className="grid gap-1.5">
                 <div className="w-fit max-w-[85%] rounded-2xl rounded-bl-md bg-sand px-4 py-2.5 text-sm text-espresso card-inset">
@@ -683,7 +897,7 @@ export function Agent({ user }: { user: User }) {
               </div>
             ))}
           </div>
-          <form className="flex gap-2" onSubmit={submit}>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); ask(q); }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ask dr. sherpa…" className={`${inputClass} flex-1 rounded-full`} />
             <button className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-espresso text-white transition-opacity disabled:opacity-50" disabled={busy}><Send size={16} /></button>
           </form>

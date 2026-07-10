@@ -1,15 +1,33 @@
 import type { Row } from './types';
 
 const PASS_KEY = 'ivf-pass';
+const EXP_KEY = 'ivf-pass-exp';
+const TRUST_DAYS = 30;
 
+// 30-day device trust: opening the app should take zero taps, like a real app.
+// The phone's own lock screen is the security boundary between sessions.
 export function getPass(): string {
+  try {
+    const exp = Number(localStorage.getItem(EXP_KEY) || 0);
+    if (exp && Date.now() < exp) return localStorage.getItem(PASS_KEY) || '';
+    localStorage.removeItem(PASS_KEY);
+    localStorage.removeItem(EXP_KEY);
+  } catch { /* storage unavailable */ }
   return sessionStorage.getItem(PASS_KEY) || '';
 }
 export function setPass(p: string) {
   sessionStorage.setItem(PASS_KEY, p);
+  try {
+    localStorage.setItem(PASS_KEY, p);
+    localStorage.setItem(EXP_KEY, String(Date.now() + TRUST_DAYS * 86400000));
+  } catch { /* private mode — session-only */ }
 }
 export function clearPass() {
   sessionStorage.removeItem(PASS_KEY);
+  try {
+    localStorage.removeItem(PASS_KEY);
+    localStorage.removeItem(EXP_KEY);
+  } catch { /* ignore */ }
 }
 
 async function req(path: string, init: RequestInit = {}): Promise<any> {
