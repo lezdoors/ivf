@@ -154,6 +154,56 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
   );
 }
 
+// ---- Reminders (web push) ------------------------------------------------------
+// Loss-aversion framing, calm delivery: two digests a day (morning + evening),
+// derived from the Notion rows. iOS needs the app installed first.
+function RemindersCard({ user }: { user: User }) {
+  const [state, setState] = useState<api.PushState | 'loading' | 'working'>('loading');
+  React.useEffect(() => { api.pushState().then(setState); }, []);
+
+  if (state === 'loading' || state === 'unsupported') return null;
+
+  const enable = async () => {
+    setState('working');
+    try { setState(await api.enablePush(user)); } catch { setState('off'); }
+  };
+  const disable = async () => {
+    setState('working');
+    setState(await api.disablePush());
+  };
+
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <strong className="block text-sm font-medium text-espresso">
+          {state === 'on' ? 'reminders are on for this device' : 'never miss a dose'}
+        </strong>
+        <p className="mt-0.5 text-xs leading-relaxed text-taupe-500">
+          {state === 'needs-install' ? (
+            <>first add the app to your home screen (share <span aria-hidden>→</span> "Add to Home Screen"), then come back here to turn on reminders.</>
+          ) : state === 'denied' ? (
+            <>notifications are blocked for this site — allow them in your browser settings, then try again.</>
+          ) : state === 'on' ? (
+            <>a gentle morning note (appointments, OPK) and an evening one (the shots). that's all — never more.</>
+          ) : (
+            <>two quiet notes a day: mornings for appointments &amp; OPK, evenings for the injections.</>
+          )}
+        </p>
+      </div>
+      {(state === 'off' || state === 'working') && (
+        <button onClick={enable} disabled={state === 'working'} className={primaryButtonClass}>
+          {state === 'working' ? 'setting up…' : 'turn on reminders'}
+        </button>
+      )}
+      {state === 'on' && (
+        <button onClick={disable} className="inline-flex min-h-[40px] items-center rounded-xl px-4 text-xs font-medium text-taupe-500 card-inset">
+          turn off
+        </button>
+      )}
+    </Card>
+  );
+}
+
 // ---- Dashboard --------------------------------------------------------------
 export function Dashboard({ user }: { user: User }) {
   const cycle = useMemo(() => computeCycle(loadCycleInput()), []);
@@ -197,6 +247,10 @@ export function Dashboard({ user }: { user: User }) {
 
       <Reveal delay={0.12}>
         <TodayChecklist r={cycle} appts={apptRows} />
+      </Reveal>
+
+      <Reveal delay={0.16}>
+        <RemindersCard user={user} />
       </Reveal>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

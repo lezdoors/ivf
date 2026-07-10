@@ -70,6 +70,62 @@ export function updateRow(db: string, id: string, fields: Record<string, any>): 
   return req(`notion?db=${db}&id=${id}`, { method: 'PATCH', body: JSON.stringify({ fields }) }).then((r) => r.row);
 }
 
+// --- push reminders -------------------------------------------------------------
+// iOS requires the PWA to be installed (Add to Home Screen) before push works.
+export type PushState = 'unsupported' | 'needs-install' | 'off' | 'on' | 'denied';
+
+const isStandalone = () =>
+  window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+
+export async function pushState(): Promise<PushState> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    // iOS Safari hides the Push API until the app is installed to the home screen
+    const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    return iOS && !isStandalone() ? 'needs-install' : 'unsupported';
+  }
+  if (Notification.permission === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return 'unsupported'; // dev mode — SW registers in prod builds only
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'on' : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+function b64ToUint8(base64: string): Uint8Array {
+  const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+export async function enablePush(member: string): Promise<PushState> {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return perm === 'denied' ? 'denied' : 'off';
+  const { key } = await req('push?action=key');
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) throw new Error('app not installed');
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: b64ToUint8(key) as unknown as BufferSource,
+  });
+  const device = /iphone|ipad|ipod/i.test(navigator.userAgent) ? 'iPhone' : /android/i.test(navigator.userAgent) ? 'Android' : 'Desktop';
+  await req('push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON(), member, device: `${member} · ${device}` }) });
+  return 'on';
+}
+
+export async function disablePush(): Promise<PushState> {
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) return 'off';
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) {
+    await req('push', { method: 'POST', body: JSON.stringify({ unsubscribe: sub.endpoint }) }).catch(() => {});
+    await sub.unsubscribe();
+  }
+  return 'off';
+}
+
 // Agent: enqueue a question, then poll the Copilot Queue row for the answer.
 export function ask(question: string, author: string): Promise<{ id: string }> {
   return req('ask', { method: 'POST', body: JSON.stringify({ question, author }) });

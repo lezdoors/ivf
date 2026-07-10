@@ -1,3 +1,7 @@
 {
-  "framework": "vite"
+  "framework": "vite",
+  "crons": [
+    { "path": "/api/push?action=cron&slot=morning", "schedule": "0 14 * * *" },
+    { "path": "/api/push?action=cron&slot=evening", "schedule": "0 3 * * *" }
+  ]
 }

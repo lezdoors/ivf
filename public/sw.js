@@ -2,7 +2,7 @@
 // Static assets: cache-first (fast repeat loads, works offline).
 // Navigations: network-first, fall back to cached shell when offline.
 // API calls (/api/*): never cached — always hit the network (live health data).
-const CACHE = 'nina-v1';
+const CACHE = 'nina-v2';
 const SHELL = ['/', '/index.html', '/icon.svg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -12,6 +12,34 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+  );
+});
+
+// --- push reminders -----------------------------------------------------------
+self.addEventListener('push', (e) => {
+  let data = { title: 'nina', body: 'you have a reminder.', url: '/' };
+  try { data = { ...data, ...e.data.json() }; } catch { /* keep defaults */ }
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'nina-reminder', // one visible reminder at a time — calm, not a pile
+      data: { url: data.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if ('focus' in w) { w.navigate(url); return w.focus(); }
+      }
+      return self.clients.openWindow(url);
+    })
   );
 });
 
