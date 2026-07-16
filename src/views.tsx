@@ -47,6 +47,11 @@ const HUB = {
   clinic: 'Stanford · Dr. Amin Milki',
   patient: 'Nina Noe-Chapuis',
   authExpires: '2026-12-06',
+  contacts: [
+    { name: 'Stanford coordinator', phone: '650-498-7911', note: 'opt 3, then 2 — call with CD1, surge, anything urgent' },
+    { name: 'CVS Specialty (meds)', phone: '877-408-9742', note: 'delivery — everything ≥1 week before stims' },
+    { name: 'Concierge IVF (injection help)', phone: '650-946-3370', note: 'nervous about a shot? they walk you through it' },
+  ],
   risks: [
     'PGT-A genetics lab must be in-network (separate bill, HMO = 100% if out-of-network)',
     'Anesthesiologist must be in-network',
@@ -284,13 +289,22 @@ export function Dashboard({ user }: { user: User }) {
         <details open={authCritical} className="group rounded-2xl bg-white p-6 card-inset sm:p-8">
           <summary className="flex cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
             <Eyebrow className="flex items-center gap-2">
-              {authCritical && <AlertTriangle size={13} className="text-terracotta-500" />} insurance &amp; admin
+              {authCritical && <AlertTriangle size={13} className="text-terracotta-500" />} care team, pharmacy &amp; admin
             </Eyebrow>
             <span className={`text-xs ${authCritical ? 'font-medium text-terracotta-500' : 'text-taupe-400'}`}>
               auth expires {compact(HUB.authExpires)} · {authLeft}d {authCritical ? '— act soon' : ''}
             </span>
           </summary>
-          <ul className="mt-4 divide-y divide-line">
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            {HUB.contacts.map((c) => (
+              <a key={c.phone} href={`tel:+1${c.phone.replace(/-/g, '')}`} className="rounded-xl bg-sand px-3.5 py-3 card-inset">
+                <strong className="block text-sm font-medium text-espresso">{c.name}</strong>
+                <span className="block text-sm text-terracotta-600">{c.phone}</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-taupe-500">{c.note}</span>
+              </a>
+            ))}
+          </div>
+          <ul className="mt-3 divide-y divide-line">
             {HUB.risks.map((r) => <li key={r} className="py-2.5 text-sm leading-relaxed text-taupe-600 first:pt-0 last:pb-0">{r}</li>)}
           </ul>
         </details>
@@ -1081,6 +1095,7 @@ const MILESTONE_MATCH: Record<string, RegExp> = {
   'retrieval': /retrieval/i,
   'trigger': /trigger/i,
   'opk-no-peak-call': /peak/i,
+  'no-surge-blood-draw': /blood draw|no.*surge/i,
   'schedule-baseline-call': /schedule|stanford/i,
 };
 function dedupeAgainstNotion(milestones: Milestone[], appts: AppointmentRow[]): Milestone[] {

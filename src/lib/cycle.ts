@@ -121,6 +121,16 @@ export function computeCycle(input: CycleInput): CycleResult {
           title: 'Call the office if the peak has not been reached yet',
           kind: 'action' as const,
           isEstimate: true,
+        },
+        // Clinic letter: if the OPK never turns positive, a blood draw finds
+        // the surge instead (7/21 for a 7/5 CD1 = CD17).
+        {
+          id: 'no-surge-blood-draw',
+          date: addDays(cd1, 16),
+          title: 'Still no surge? Call to schedule a blood draw',
+          kind: 'action' as const,
+          note: `Only if the OPK has not turned positive by today — ${CLINIC_PHONE}.`,
+          isEstimate: false,
         }]),
     {
       id: 'schedule-baseline-call',
@@ -142,9 +152,9 @@ export function computeCycle(input: CycleInput): CycleResult {
     {
       id: 'estrace-start',
       date: estraceStart,
-      title: 'Start Estrace (estrogen priming)',
+      title: 'Start Estrace 2mg (1 tablet, twice a day)',
       kind: 'med',
-      note: `Day ${estraceOffset} — counted from the day after peak ovulation. Daily until the baseline scan.`,
+      note: `Day ${estraceOffset} — counted from the day after peak ovulation. Twice daily until the baseline scan.`,
       isEstimate: !surgeIsActual,
     },
     ...(stimCd1IsActual
@@ -180,19 +190,27 @@ export function computeCycle(input: CycleInput): CycleResult {
       isEstimate: !stimCd1IsActual,
     },
     {
+      id: 'exercise-cutoff',
+      date: addDays(stimCd2, 3),
+      title: 'Last day for vigorous exercise & intercourse',
+      kind: 'action',
+      note: 'From tomorrow: low-impact only (walking, swimming), heart rate under 140 — the ovaries get heavy during stims.',
+      isEstimate: !stimCd1IsActual,
+    },
+    {
       id: 'day5-us',
       date: day5Ultrasound,
-      title: 'Day-5 U/S — possible Ganirelix start',
+      title: 'Day-5 U/S — bring the Ganirelix',
       kind: stimCd1IsActual ? 'fixed' : 'estimate',
-      note: 'Ganirelix at the same time each morning; monitoring every 1–3 days after.',
+      note: 'Bring it ready to start. Once started: same time each morning until trigger day; monitoring every 1–3 days after.',
       isEstimate: !stimCd1IsActual,
     },
     {
       id: 'trigger',
       date: triggerEstimate,
-      title: 'Possible trigger shot (HCG ± Lupron) — stim day ~10',
+      title: 'Possible trigger shot (Lupron 80u + Pregnyl 10,000u) — stim day ~10',
       kind: 'estimate',
-      note: 'Monitoring-dependent — the scans set the real date.',
+      note: 'Monitoring-dependent — the nurse calls with the exact time. Retrieval is ~36h later.',
       isEstimate: true,
     },
     {

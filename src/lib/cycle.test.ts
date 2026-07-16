@@ -78,9 +78,15 @@ describe('computeCycle — 28-day default (cd1 = 2026-07-05)', () => {
     expect(byId['schedule-baseline-call'].date).toBe('2026-07-19');
     expect(byId['abstinence'].date).toBe(addDays(r.retrievalEstimate, -2));
   });
-  it('drops the no-peak call once the real surge is entered', () => {
+  it('adds the class-letter items: no-surge blood draw (CD17) + stim-day-4 cutoff', () => {
+    const byId = Object.fromEntries(r.milestones.map((m) => [m.id, m]));
+    expect(byId['no-surge-blood-draw'].date).toBe('2026-07-21');
+    expect(byId['exercise-cutoff'].date).toBe(addDays(r.stimCd2, 3));
+  });
+  it('drops the no-peak call + blood-draw once the real surge is entered', () => {
     const withSurge = computeCycle({ ...BASE, actualSurge: '2026-07-19' });
     expect(withSurge.milestones.find((m) => m.id === 'opk-no-peak-call')).toBeUndefined();
+    expect(withSurge.milestones.find((m) => m.id === 'no-surge-blood-draw')).toBeUndefined();
   });
 });
 
