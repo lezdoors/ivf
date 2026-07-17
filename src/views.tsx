@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity, CalendarDays, HeartPulse, Pill, Bot, Send, RefreshCw, AlertTriangle, Syringe, FlaskConical,
+  Bell, Sun, Moon,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import * as api from './api';
 import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, LabResultRow } from './types';
 import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
@@ -113,6 +115,23 @@ function todayItems(r: CycleResult, appts: AppointmentRow[]): TodayItem[] {
   return items;
 }
 
+// Each checklist item carries a small colored "kind" tile — a glanceable cue for
+// what sort of thing it is (a shot, a morning pill, a test, an appointment).
+// Colors stay inside the locked token palette; appointments read as espresso.
+type Kind = { bg: string; fg: string; Icon: LucideIcon };
+const KIND: Record<string, Kind> = {
+  opk: { bg: 'bg-raspberry-50', fg: 'text-raspberry-600', Icon: Bell },
+  estrace: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
+  prenatal: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
+  coq10: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
+  stims: { bg: 'bg-sage-50', fg: 'text-sage-600', Icon: Moon },
+  ganirelix: { bg: 'bg-sage-50', fg: 'text-sage-600', Icon: Sun },
+};
+function kindFor(id: string): Kind {
+  if (id.startsWith('appt-')) return { bg: 'bg-espresso/[0.06]', fg: 'text-espresso', Icon: CalendarDays };
+  return KIND[id] ?? { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun };
+}
+
 const checksKey = () => `ivf-checks-${todayISO()}`;
 function loadChecks(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(checksKey()) || '{}'); } catch { return {}; }
@@ -137,15 +156,19 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
       <div className="divide-y divide-line">
         {items.map((i) => {
           const isDone = !!checks[i.id];
+          const k = kindFor(i.id);
           return (
             <button
               key={i.id} type="button" onClick={() => toggle(i.id)} aria-pressed={isDone}
-              className="flex w-full items-center gap-3.5 py-3 text-left first:pt-0 last:pb-0"
+              className="flex w-full items-center gap-3 py-3 text-left first:pt-0 last:pb-0"
             >
               <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full transition-colors duration-150 ${isDone ? 'bg-sage-500' : 'bg-white card-inset'}`} aria-hidden>
                 {isDone && (
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 )}
+              </span>
+              <span className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg transition-opacity duration-150 ${k.bg} ${isDone ? 'opacity-50' : ''}`} aria-hidden>
+                <k.Icon size={15} className={k.fg} />
               </span>
               <span className="min-w-0">
                 <span className={`block text-sm font-medium transition-colors duration-150 ${isDone ? 'text-taupe-400' : 'text-espresso'}`}>{i.label}</span>
@@ -155,6 +178,16 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
           );
         })}
       </div>
+      {allDone && (
+        <div className="mt-3 flex items-center gap-3 rounded-xl bg-sage-50 px-4 py-3">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="shrink-0" aria-hidden>
+            <ellipse cx="8" cy="12" rx="5" ry="7" fill="#8B3348" opacity="0.5" transform="rotate(-26 8 12)" />
+            <ellipse cx="14" cy="12" rx="5" ry="7" fill="#8B3348" opacity="0.5" transform="rotate(26 14 12)" />
+            <ellipse cx="11" cy="10" rx="5" ry="7.5" fill="#A44458" opacity="0.82" />
+          </svg>
+          <span className="text-sm font-medium text-sage-600">All done today — the garden grew.</span>
+        </div>
+      )}
     </Card>
   );
 }
@@ -211,7 +244,14 @@ function RemindersCard({ user }: { user: User }) {
 
 // ---- Dashboard --------------------------------------------------------------
 export function Dashboard({ user }: { user: User }) {
-  const cycle = useMemo(() => computeCycle(loadCycleInput()), []);
+  const input = useMemo(() => loadCycleInput(), []);
+  const cycle = useMemo(() => computeCycle(input), [input]);
+  // Journey progress: elapsed days from Cycle Day 1 to the estimated retrieval,
+  // clamped to 0–100. The soft-gold fill is the only non-white accent allowed on
+  // the sage gradient.
+  const totalDays = diffDays(cycle.retrievalEstimate, input.cd1);
+  const elapsedDays = diffDays(todayISO(), input.cd1);
+  const progress = totalDays > 0 ? Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100)) : 0;
   const appts = useAsync(() => api.listDb('appointments', 'Date', 'asc'), []);
   const mon = useAsync(() => api.listDb('monitoring', 'Date', 'desc'), []);
   const apptRows = (appts.data as AppointmentRow[] | null) || [];
@@ -232,21 +272,34 @@ export function Dashboard({ user }: { user: User }) {
   return (
     <div className="grid gap-4 sm:gap-5">
       <Reveal>
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="relative flex h-1.5 w-1.5">
-            <motion.span
-              className="absolute inline-flex h-full w-full rounded-full bg-terracotta-500"
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        <div
+          className="relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-espresso/20 sm:p-8"
+          style={{ background: 'linear-gradient(135deg, #54796F 0%, #6B9080 100%)' }}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <span className="relative flex h-1.5 w-1.5">
+              <motion.span
+                className="absolute inline-flex h-full w-full rounded-full bg-[#F2DCA6]"
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            </span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/80">current phase</span>
+          </div>
+          <h1 className="text-2xl font-light leading-snug tracking-tight text-white sm:text-3xl">{cyclePhase(cycle)}</h1>
+          <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-white/80">
+            <span>{HUB.clinic}</span>
+            <span>· patient {HUB.patient}</span>
+            <span>· planned start {compact(cycle.stimCd2)}</span>
+          </div>
+          <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-white/25">
+            <motion.div
+              className="h-full rounded-full bg-[#F2DCA6]"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
             />
-          </span>
-          <Eyebrow>current phase</Eyebrow>
-        </div>
-        <h1 className="text-2xl font-light leading-snug tracking-tight text-espresso sm:text-3xl">{cyclePhase(cycle)}</h1>
-        <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-taupe-500">
-          <span>{HUB.clinic}</span>
-          <span>· patient {HUB.patient}</span>
-          <span>· planned start {compact(cycle.stimCd2)}</span>
+          </div>
         </div>
       </Reveal>
 
