@@ -36,9 +36,14 @@ function Gate({ onIn }: { onIn: () => void }) {
   };
   return (
     <div className="grid min-h-screen place-items-center bg-sand p-6">
-      <Reveal className="grid w-full max-w-[360px] justify-items-center gap-2 rounded-2xl bg-white p-10 text-center card-inset">
-        <img src="/icon-192.png" alt="nina" className="h-14 w-14 rounded-2xl shadow-sm" />
-        <h1 className="mt-4 text-2xl font-light tracking-tight text-espresso">nina</h1>
+      <Reveal className="grid w-full max-w-[360px] justify-items-center gap-2 rounded-2xl bg-white p-8 text-center card-inset">
+        <video
+          src="/hummingbird-loop.mp4" poster="/hummingbird-poster.jpg"
+          autoPlay muted loop playsInline
+          aria-label="Nina's watercolor hummingbird, wings beating"
+          className="w-full rounded-xl"
+        />
+        <h1 className="mt-3 text-2xl font-light tracking-tight text-espresso">nina</h1>
         <p className="mb-4 text-sm text-taupe-500">your private IVF companion.</p>
         <form onSubmit={submit} className="grid w-full gap-2.5">
           <input
