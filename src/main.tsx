@@ -34,31 +34,55 @@ function Gate({ onIn }: { onIn: () => void }) {
     if (ok) onIn();
     else setErr(true);
   };
+  // Nu-grammar gate: a full-bleed fuchsia world, the painting floating in it,
+  // huge friendly type, one bold white pill. The card-on-sand version is gone.
+  const rise = (delay: number) => ({
+    initial: { opacity: 0, y: 28 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.7, ease: EASE, delay },
+  });
   return (
-    <div className="grid min-h-screen place-items-center bg-sand p-6">
-      <Reveal className="grid w-full max-w-[360px] justify-items-center gap-2 rounded-2xl bg-white p-8 text-center card-inset">
-        <video
-          src="/hummingbird-loop.mp4" poster="/hummingbird-poster.jpg"
-          autoPlay muted loop playsInline
-          aria-label="Nina's watercolor hummingbird, wings beating"
-          className="w-full rounded-xl"
-        />
-        <h1 className="mt-3 text-2xl font-light tracking-tight text-espresso">nina</h1>
-        <p className="mb-4 text-sm text-taupe-500">your private IVF companion.</p>
-        <form onSubmit={submit} className="grid w-full gap-2.5">
+    <div
+      className="relative grid min-h-[100dvh] place-items-center overflow-hidden p-6"
+      style={{ background: 'linear-gradient(160deg, #8E2C86 0%, #B93AAC 55%, #C74BA6 100%)' }}
+    >
+      <div className="hero-blob hero-blob-a -right-20 top-[-10%] h-[420px] w-[420px]" style={{ background: 'rgba(254,119,254,0.4)' }} />
+      <div className="hero-blob hero-blob-b bottom-[-12%] left-[-10%] h-[460px] w-[460px]" style={{ background: 'rgba(119,221,119,0.3)' }} />
+      <div className="relative w-full max-w-[360px]">
+        <motion.div
+          {...rise(0.05)}
+          className="mx-auto w-[82%] overflow-hidden rounded-[28px] shadow-2xl shadow-[#5e1758]/50"
+          style={{ rotate: -3 }}
+        >
+          <motion.video
+            src="/hummingbird-loop.mp4" poster="/hummingbird-poster.jpg"
+            autoPlay muted loop playsInline
+            aria-label="Nina's watercolor hummingbird, wings beating"
+            className="w-full"
+            animate={{ y: [0, -6, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </motion.div>
+        <motion.h1 {...rise(0.18)} className="mt-8 text-[40px] font-light leading-[1.05] tracking-tight text-white">
+          your journey,
+          <br />
+          <span className="text-[#A9EDB1]">together.</span>
+        </motion.h1>
+        <motion.form {...rise(0.3)} onSubmit={submit} className="mt-8 grid w-full gap-3">
           <input
             type="password" inputMode="numeric" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="passcode" autoFocus
-            className="min-h-[46px] w-full rounded-xl px-4 text-center text-sm text-espresso card-inset focus:shadow-[inset_0_0_0_1.5px_theme(colors.terracotta.400)]"
+            className="min-h-[50px] w-full rounded-full border border-white/30 bg-white/15 px-4 text-center text-base text-white placeholder:text-white/60 backdrop-blur-sm focus:border-white/70 focus:outline-none"
           />
-          <button
-            className="min-h-[46px] w-full rounded-xl bg-espresso text-sm font-medium text-white transition-opacity disabled:opacity-50"
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            className="min-h-[50px] w-full rounded-full bg-white text-[15px] font-semibold text-terracotta-600 shadow-lg shadow-[#5e1758]/30 transition-opacity disabled:opacity-60"
             disabled={busy}
           >
             {busy ? 'checking…' : 'enter'}
-          </button>
-          {err && <small className="text-terracotta-500">wrong passcode</small>}
-        </form>
-      </Reveal>
+          </motion.button>
+          {err && <small className="text-center font-medium text-[#A9EDB1]" role="alert">wrong passcode — try again</small>}
+        </motion.form>
+      </div>
     </div>
   );
 }
@@ -133,9 +157,9 @@ function App() {
       <AnimatePresence mode="wait">
         <motion.main
           key={tab}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.35, ease: EASE }}
         >
           {tab === 'today' && <Dashboard user={user} />}

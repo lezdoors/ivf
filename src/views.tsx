@@ -7,7 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import * as api from './api';
 import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, LabResultRow } from './types';
-import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, CountUp, Eyebrow, Sparkline } from './ui';
+import { EASE, useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, CountUp, Eyebrow, Sparkline } from './ui';
 import { computeCycle, diffDays, addDays } from './lib/cycle';
 import type { CycleInput, CycleResult, Milestone, MilestoneKind } from './lib/cycle';
 import { GLOSSARY, TERM_RE, lookupTerm } from './lib/glossary';
@@ -162,14 +162,30 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
           const isDone = !!checks[i.id];
           const k = kindFor(i.id);
           return (
-            <button
+            <motion.button
               key={i.id} type="button" onClick={() => toggle(i.id)} aria-pressed={isDone}
+              whileTap={{ scale: 0.985 }}
               className="flex w-full items-center gap-3 py-3 text-left first:pt-0 last:pb-0"
             >
-              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full transition-colors duration-150 ${isDone ? 'bg-sage-500' : 'bg-white card-inset'}`} aria-hidden>
+              <span className="relative grid h-6 w-6 shrink-0 place-items-center" aria-hidden>
+                {/* fuchsia ping on completion — bubble-wrap pop */}
                 {isDone && (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <motion.span
+                    className="absolute inset-0 rounded-full border-2 border-terracotta-400"
+                    initial={{ scale: 0.8, opacity: 0.9 }}
+                    animate={{ scale: 1.9, opacity: 0 }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                  />
                 )}
+                <motion.span
+                  className={`grid h-6 w-6 place-items-center rounded-full transition-colors duration-150 ${isDone ? 'bg-sage-500' : 'bg-white card-inset'}`}
+                  animate={isDone ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.35, ease: EASE }}
+                >
+                  {isDone && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  )}
+                </motion.span>
               </span>
               <span className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg transition-opacity duration-150 ${k.bg} ${isDone ? 'opacity-50' : ''}`} aria-hidden>
                 <k.Icon size={15} className={k.fg} />
@@ -178,7 +194,7 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
                 <span className={`block text-sm font-medium transition-colors duration-150 ${isDone ? 'text-taupe-400' : 'text-espresso'}`}>{i.label}</span>
                 {i.sub && <span className={`block text-xs leading-snug ${isDone ? 'text-taupe-400/70' : 'text-taupe-500'}`}>{i.sub}</span>}
               </span>
-            </button>
+            </motion.button>
           );
         })}
       </div>
