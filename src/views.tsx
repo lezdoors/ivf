@@ -7,7 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import * as api from './api';
 import type { User, JournalRow, MonitoringRow, AppointmentRow, MedicationRow, LabResultRow } from './types';
-import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, Eyebrow, Sparkline } from './ui';
+import { useAsync, todayISO, dISO, compact, longDate, daysUntil, Reveal, Card, CountUp, Eyebrow, Sparkline } from './ui';
 import { computeCycle, diffDays, addDays } from './lib/cycle';
 import type { CycleInput, CycleResult, Milestone, MilestoneKind } from './lib/cycle';
 import { GLOSSARY, TERM_RE, lookupTerm } from './lib/glossary';
@@ -63,12 +63,12 @@ const HUB = {
 };
 
 const FEELINGS: { name: string; color: string }[] = [
-  { name: 'Hopeful', color: '#B8735A' },
-  { name: 'Grateful', color: '#C98868' },
-  { name: 'Soft', color: '#A79E93' },
-  { name: 'Tender', color: '#8B8178' },
-  { name: 'Anxious', color: '#9C5D47' },
-  { name: 'Heavy', color: '#6B6259' },
+  { name: 'Hopeful', color: '#B93AAC' },
+  { name: 'Grateful', color: '#D95FCB' },
+  { name: 'Soft', color: '#7E948A' },
+  { name: 'Tender', color: '#5C6E65' },
+  { name: 'Anxious', color: '#9C2B91' },
+  { name: 'Heavy', color: '#46564E' },
 ];
 const MOODS = ['Good', 'Okay', 'Tough'];
 
@@ -185,9 +185,9 @@ function TodayChecklist({ r, appts }: { r: CycleResult; appts: AppointmentRow[] 
       {allDone && (
         <div className="mt-3 flex items-center gap-3 rounded-xl bg-sage-50 px-4 py-3">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="shrink-0" aria-hidden>
-            <ellipse cx="8" cy="12" rx="5" ry="7" fill="#8B3348" opacity="0.5" transform="rotate(-26 8 12)" />
-            <ellipse cx="14" cy="12" rx="5" ry="7" fill="#8B3348" opacity="0.5" transform="rotate(26 14 12)" />
-            <ellipse cx="11" cy="10" rx="5" ry="7.5" fill="#A44458" opacity="0.82" />
+            <ellipse cx="8" cy="12" rx="5" ry="7" fill="#B02D93" opacity="0.5" transform="rotate(-26 8 12)" />
+            <ellipse cx="14" cy="12" rx="5" ry="7" fill="#B02D93" opacity="0.5" transform="rotate(26 14 12)" />
+            <ellipse cx="11" cy="10" rx="5" ry="7.5" fill="#CC4FA9" opacity="0.82" />
           </svg>
           <span className="text-sm font-medium text-sage-600">All done today — the garden grew.</span>
         </div>
@@ -251,8 +251,8 @@ export function Dashboard({ user }: { user: User }) {
   const input = useMemo(() => loadCycleInput(), []);
   const cycle = useMemo(() => computeCycle(input), [input]);
   // Journey progress: elapsed days from Cycle Day 1 to the estimated retrieval,
-  // clamped to 0–100. The soft-gold fill is the only non-white accent allowed on
-  // the sage gradient.
+  // clamped to 0–100. Pale green #A9EDB1 is the only non-white accent allowed
+  // on the fuchsia hero.
   const totalDays = diffDays(cycle.retrievalEstimate, input.cd1);
   const elapsedDays = diffDays(todayISO(), input.cd1);
   const progress = totalDays > 0 ? Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100)) : 0;
@@ -277,32 +277,44 @@ export function Dashboard({ user }: { user: User }) {
     <div className="grid gap-4 sm:gap-5">
       <Reveal>
         <div
-          className="relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-espresso/20 sm:p-8"
-          style={{ background: 'linear-gradient(135deg, #54796F 0%, #6B9080 100%)' }}
+          className="relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-raspberry-600/25 sm:p-8"
+          style={{ background: 'linear-gradient(135deg, #8E2C86 0%, #B93AAC 62%, #C74BA6 100%)' }}
         >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="relative flex h-1.5 w-1.5">
-              <motion.span
-                className="absolute inline-flex h-full w-full rounded-full bg-[#F2DCA6]"
-                animate={{ opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            </span>
-            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/80">current phase</span>
-          </div>
-          <h1 className="text-2xl font-light leading-snug tracking-tight text-white sm:text-3xl">{cyclePhase(cycle)}</h1>
-          <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-white/80">
-            <span>{HUB.clinic}</span>
-            <span>· patient {HUB.patient}</span>
-            <span>· planned start {compact(cycle.stimCd2)}</span>
-          </div>
-          <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-white/25">
-            <motion.div
-              className="h-full rounded-full bg-[#F2DCA6]"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
+          {/* ambient light-leaks — the hero breathes */}
+          <div className="hero-blob hero-blob-a -right-16 -top-24 h-64 w-64" style={{ background: 'rgba(254,119,254,0.35)' }} />
+          <div className="hero-blob hero-blob-b -bottom-28 -left-12 h-72 w-72" style={{ background: 'rgba(119,221,119,0.28)' }} />
+          <div className="relative">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="relative flex h-1.5 w-1.5">
+                <motion.span
+                  className="absolute inline-flex h-full w-full rounded-full bg-[#A9EDB1]"
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              </span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/80">current phase</span>
+            </div>
+            <h1 className="text-2xl font-light leading-snug tracking-tight text-white sm:text-3xl">{cyclePhase(cycle)}</h1>
+            <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-white/80">
+              <span>{HUB.clinic}</span>
+              <span>· patient {HUB.patient}</span>
+              <span>· planned start {compact(cycle.stimCd2)}</span>
+            </div>
+            <div className="mt-5 flex items-center gap-3">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/25">
+                <motion.div
+                  className="h-full rounded-full bg-[#A9EDB1]"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </div>
+              {elapsedDays >= 0 && (
+                <span className="shrink-0 text-xs font-medium text-white/90">
+                  day <CountUp value={elapsedDays + 1} className="text-sm font-semibold text-[#A9EDB1]" />
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </Reveal>
@@ -448,10 +460,10 @@ export function Monitoring() {
           <Card>
             <Eyebrow className="mb-5 flex items-center gap-2"><Activity size={13} /> stim response</Eyebrow>
             <div className="grid gap-6 sm:grid-cols-2">
-              <MetricTrend label="estradiol (E2)" unit="pg/mL" values={series('E2')} stroke="#B8735A" fill="rgba(184,115,90,0.10)" />
-              <MetricTrend label="lead follicle" unit="mm" values={series('Lead Follicle (mm)')} stroke="#2C2A29" fill="rgba(44,42,41,0.06)" />
-              <MetricTrend label="lining" unit="mm" values={series('Lining (mm)')} stroke="#8B8178" fill="rgba(139,129,120,0.08)" />
-              <MetricTrend label="progesterone (P4)" unit="ng/mL" values={series('P4')} stroke="#9C5D47" fill="rgba(156,93,71,0.08)" />
+              <MetricTrend label="estradiol (E2)" unit="pg/mL" values={series('E2')} stroke="#B93AAC" fill="rgba(185,58,172,0.10)" />
+              <MetricTrend label="lead follicle" unit="mm" values={series('Lead Follicle (mm)')} stroke="#1E3B31" fill="rgba(30,59,49,0.06)" />
+              <MetricTrend label="lining" unit="mm" values={series('Lining (mm)')} stroke="#5C6E65" fill="rgba(92,110,101,0.08)" />
+              <MetricTrend label="progesterone (P4)" unit="ng/mL" values={series('P4')} stroke="#9C2B91" fill="rgba(156,43,145,0.08)" />
             </div>
           </Card>
         </Reveal>
@@ -498,9 +510,9 @@ export function Monitoring() {
 // sage for Ryan, terracotta when shared. Empty days are soil, not deficits.
 // Nina's hummingbird visits the newest bloom.
 const BLOOM: Record<string, { petal: string; heart: string }> = {
-  Nina: { petal: '#8B3348', heart: '#A44458' },
-  Ryan: { petal: '#676536', heart: '#8A8A5E' },
-  Both: { petal: '#B8735A', heart: '#C98868' },
+  Nina: { petal: '#B02D93', heart: '#CC4FA9' },
+  Ryan: { petal: '#35804D', heart: '#77DD77' },
+  Both: { petal: '#B93AAC', heart: '#D95FCB' },
 };
 const DAY_W = 26;
 const G_H = 148;
@@ -515,7 +527,7 @@ function GardenBloom({ x, author, tall, delay }: { x: number; author: string; ta
   return (
     <g transform={`translate(${x},${SOIL_Y})`}>
       <g style={{ opacity: 0, animation: `bloomIn .5s cubic-bezier(.22,1,.36,1) ${delay}s forwards` }}>
-        <path d={`M0,0 C0,${-h * 0.5} ${tall % 2 ? 2 : -2},${-h * 0.72} 0,${-h}`} stroke="#6B7050" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        <path d={`M0,0 C0,${-h * 0.5} ${tall % 2 ? 2 : -2},${-h * 0.72} 0,${-h}`} stroke="#3E6B52" strokeWidth="1.5" fill="none" strokeLinecap="round" />
         <ellipse cx={-5.5} cy={-h - 3.5} rx={6} ry={8.5} fill={c.petal} opacity=".5" transform={`rotate(-26 ${-5.5} ${-h - 3.5})`} />
         <ellipse cx={5.5} cy={-h - 3.5} rx={6} ry={8.5} fill={c.petal} opacity=".5" transform={`rotate(26 ${5.5} ${-h - 3.5})`} />
         <ellipse cx={0} cy={-h - 7} rx={6} ry={9.5} fill={c.heart} opacity=".82" />
@@ -528,8 +540,8 @@ function Hummingbird({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x - 18},${y})`}>
       <g className="hb-float">
-        <path d="M2 10 C6 4 14 2 20 6 C26 2 34 4 36 10 C30 8 26 9 22 12 C18 15 14 15 10 12 C7 10 4 10 2 10 Z" fill="#5E5A50" opacity=".85" />
-        <path d="M20 6 C18 -2 24 -6 28 -4 C24 0 23 3 22 7 Z" fill="#8B8178" opacity=".8" />
+        <path d="M2 10 C6 4 14 2 20 6 C26 2 34 4 36 10 C30 8 26 9 22 12 C18 15 14 15 10 12 C7 10 4 10 2 10 Z" fill="#46564E" opacity=".85" />
+        <path d="M20 6 C18 -2 24 -6 28 -4 C24 0 23 3 22 7 Z" fill="#5C6E65" opacity=".8" />
         <path d="M2 10 L-7 12.5" stroke="#33241D" strokeWidth="1.5" strokeLinecap="round" />
         <circle cx="9" cy="8" r="1" fill="#33241D" />
       </g>
@@ -595,8 +607,8 @@ function CycleGarden({ entries, user }: { entries: JournalRow[]; user: User }) {
           {/* milestone markers — labels stagger so close dates don't collide */}
           {markers.map((m, mi) => (m.date >= start && m.date <= end) && (
             <g key={m.label} transform={`translate(${xFor(m.date)},0)`}>
-              <line x1={0} y1={14 + (mi % 2) * 12 + 4} x2={0} y2={SOIL_Y - 4} stroke="#C98868" strokeWidth="1.2" strokeDasharray="3 4" opacity=".7" />
-              <text x={0} y={12 + (mi % 2) * 12} textAnchor="middle" fontSize="9" fontWeight="600" letterSpacing=".08em" fill="#9C5D47">{m.label.toUpperCase()}</text>
+              <line x1={0} y1={14 + (mi % 2) * 12 + 4} x2={0} y2={SOIL_Y - 4} stroke="#D95FCB" strokeWidth="1.2" strokeDasharray="3 4" opacity=".7" />
+              <text x={0} y={12 + (mi % 2) * 12} textAnchor="middle" fontSize="9" fontWeight="600" letterSpacing=".08em" fill="#9C2B91">{m.label.toUpperCase()}</text>
             </g>
           ))}
           {/* blooms */}
@@ -610,7 +622,7 @@ function CycleGarden({ entries, user }: { entries: JournalRow[]; user: User }) {
             const isToday = d === today;
             if (!isToday && i % 7 !== 0) return null;
             return (
-              <text key={`l${d}`} x={20 + i * DAY_W} y={G_H - 22} textAnchor="middle" fontSize="9" fontWeight={isToday ? 700 : 500} fill={isToday ? '#B8735A' : '#A79E93'}>
+              <text key={`l${d}`} x={20 + i * DAY_W} y={G_H - 22} textAnchor="middle" fontSize="9" fontWeight={isToday ? 700 : 500} fill={isToday ? '#B93AAC' : '#7E948A'}>
                 {isToday ? 'today' : compact(d)}
               </text>
             );

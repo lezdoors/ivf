@@ -23,13 +23,34 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   return <section className={`card-inset rounded-2xl bg-white p-6 sm:p-8 ${className}`}>{children}</section>;
 }
 
+/** Rolls a number up into place on mount (reduced-motion: renders instantly). */
+export function CountUp({ value, duration = 0.9, className = '' }: { value: number; duration?: number; className?: string }) {
+  const [n, setN] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? value : 0,
+  );
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setN(value); return; }
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / (duration * 1000));
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic — an exhale
+      setN(Math.round(eased * value));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <span className={`tabular-nums ${className}`}>{n}</span>;
+}
+
 export function Eyebrow({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <span className={`block text-[11px] font-medium uppercase tracking-[0.15em] text-taupe-500 ${className}`}>{children}</span>;
 }
 
 // --- sparkline ---------------------------------------------------------------
 // Tiny dependency-free trend line. `values` in chronological order.
-export function Sparkline({ values, stroke = '#B8735A', fill = 'rgba(184,115,90,0.10)', h = 44 }: {
+export function Sparkline({ values, stroke = '#B93AAC', fill = 'rgba(185,58,172,0.10)', h = 44 }: {
   values: number[]; stroke?: string; fill?: string; h?: number;
 }) {
   const pts = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));

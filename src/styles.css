@@ -60,7 +60,34 @@
 
 @layer utilities {
   .card-inset {
-    box-shadow: inset 0 0 0 1px rgba(139, 129, 120, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(147, 38, 124, 0.10);
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (hover: hover) {
+    .card-inset:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        inset 0 0 0 1px rgba(147, 38, 124, 0.16),
+        0 10px 28px -14px rgba(147, 38, 124, 0.28);
+    }
+  }
+  /* ambient light-leaks on the hero — slow, breathing, GPU-only */
+  .hero-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(48px);
+    pointer-events: none;
+    will-change: transform;
+  }
+  .hero-blob-a {
+    animation: blob-a 16s ease-in-out infinite alternate;
+  }
+  .hero-blob-b {
+    animation: blob-b 21s ease-in-out infinite alternate;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-blob-a, .hero-blob-b { animation: none; }
+    .card-inset, .card-inset:hover { transform: none; transition: none; }
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -94,4 +121,13 @@
   select {
     font-size: 16px !important;
   }
+}
+
+@keyframes blob-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(14%, 10%, 0) scale(1.18); }
+}
+@keyframes blob-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.1); }
+  100% { transform: translate3d(-12%, -8%, 0) scale(0.94); }
 }
