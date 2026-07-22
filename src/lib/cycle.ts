@@ -9,6 +9,8 @@ export interface CycleInput {
   cycleLength: number; // default 28
   actualSurge?: string; // actual positive OPK date, overrides the estimate
   actualStimCd1?: string; // actual next period Day 1 (called into clinic), overrides estimate
+  estradiolStart?: string; // clinic-given absolute start date (7/24 visit: Sun 7/26), overrides the computed offset
+  expectedNextCd1?: string; // clinic's expectation for the next period Day 1 (7/24 visit: ~8/3), used until the real one is entered
   estraceOffsetDays?: number; // default 5 (Estrace starts on "Day 5" — 5 days after peak ovulation)
   periodAfterEstraceMin?: number; // default 10
   periodAfterEstraceMax?: number; // default 12
@@ -74,10 +76,20 @@ export const CLINIC_PHONE = '650-498-7911 (opt 3/2)';
 
 // Clinic-given ABSOLUTE appointments (the clinic gave these as dates, not
 // offsets — they do not move when the cycle shifts).
+export const CLINIC_ADDRESS = '1195 Fremont Ave, Sunnyvale, CA';
+
 const FIXED_APPOINTMENTS: Milestone[] = [
   { id: 'ivf-class', date: '2026-07-14', title: 'IVF class — 7:30 AM', kind: 'fixed', isEstimate: false },
   { id: 'pgt-class', date: '2026-07-14', title: 'PGT class — 1:00 PM', kind: 'fixed', note: 'Partner must attend.', isEstimate: false },
   { id: 'consent-signing', date: '2026-07-27', title: 'Consent signing w/ Dr. Milki — 4:00 PM', kind: 'fixed', note: 'Partner must attend.', isEstimate: false },
+  {
+    id: 'baseline-us',
+    date: '2026-07-31',
+    title: 'Baseline ultrasound — 2:30 PM',
+    kind: 'fixed',
+    note: `${CLINIC_ADDRESS}. Must be clear (no cysts) to start the shots. If your period starts BEFORE this scan — call ${CLINIC_PHONE} first.`,
+    isEstimate: false,
+  },
 ];
 
 export function computeCycle(input: CycleInput): CycleResult {
@@ -97,11 +109,18 @@ export function computeCycle(input: CycleInput): CycleResult {
   const surge = surgeIsActual ? input.actualSurge! : estimatedSurge;
   const ovulation = surgeIsActual ? addDays(surge, 1) : estimatedOvulation;
 
-  // Estrace starts on "Day 5" — Day 1 is the day after peak ovulation.
-  const estraceStart = addDays(ovulation, estraceOffset);
+  // Estradiol: the clinic gave an absolute start date (Sun 7/26, am+pm);
+  // fall back to the computed "Day 5 after ovulation" rule if none given.
+  // It runs until Day 1 of the period — that day she stops it.
+  const estradiolIsFixed = isValidISO(input.estradiolStart);
+  const estraceStart = estradiolIsFixed ? input.estradiolStart! : addDays(ovulation, estraceOffset);
   const nextPeriodWindow: [string, string] = [addDays(estraceStart, pMin), addDays(estraceStart, pMax)];
   const stimCd1IsActual = isValidISO(input.actualStimCd1);
-  const stimCd1 = stimCd1IsActual ? input.actualStimCd1! : addDays(estraceStart, Math.round((pMin + pMax) / 2));
+  const stimCd1 = stimCd1IsActual
+    ? input.actualStimCd1!
+    : isValidISO(input.expectedNextCd1)
+      ? input.expectedNextCd1!
+      : addDays(estraceStart, Math.round((pMin + pMax) / 2));
   const stimCd2 = addDays(stimCd1, 1);
   const day5Ultrasound = addDays(stimCd2, 4);
   const triggerEstimate = addDays(stimCd2, 9); // stim day ~10 — monitoring-dependent
@@ -133,12 +152,12 @@ export function computeCycle(input: CycleInput): CycleResult {
           isEstimate: false,
         }]),
     {
-      id: 'schedule-baseline-call',
-      date: ovulation,
-      title: 'Call Stanford — schedule the baseline U/S',
+      id: 'period-watch',
+      date: estraceStart,
+      title: 'From today: if your period starts before the baseline U/S — call first',
       kind: 'action',
-      note: `${CLINIC_PHONE} — the baseline lands on CD1–2 of the next period.`,
-      isEstimate: !surgeIsActual,
+      note: `${CLINIC_PHONE} — the 7/31 baseline assumes the period hasn't started yet.`,
+      isEstimate: false,
     },
     {
       id: 'surge',
@@ -152,39 +171,34 @@ export function computeCycle(input: CycleInput): CycleResult {
     {
       id: 'estrace-start',
       date: estraceStart,
-      title: 'Start Estrace 2mg (1 tablet, twice a day)',
+      title: 'Start Estradiol 2mg — morning & evening',
       kind: 'med',
-      note: `Day ${estraceOffset} — counted from the day after peak ovulation. Twice daily until the baseline scan.`,
-      isEstimate: !surgeIsActual,
+      note: estradiolIsFixed
+        ? 'Clinic-set start. 2mg with breakfast + 2mg with dinner, every day until Day 1 of your period — that day you stop.'
+        : `Day ${estraceOffset} — counted from the day after peak ovulation. Twice daily until Day 1 of your period.`,
+      isEstimate: estradiolIsFixed ? false : !surgeIsActual,
     },
     ...(stimCd1IsActual
       ? [{
           id: 'stim-cd1',
           date: stimCd1,
-          title: 'Cycle Day 1 — confirmed (called into clinic)',
+          title: 'Cycle Day 1 — confirmed. Stop Estradiol.',
           kind: 'fixed' as const,
+          note: `Last Estradiol was yesterday. Call ${CLINIC_PHONE} — monitoring starts.`,
           isEstimate: false,
         }]
       : [{
           id: 'period-window',
-          date: nextPeriodWindow[0],
-          title: `Next period expected (${nextPeriodWindow[0].slice(5).replace('-', '/')}–${nextPeriodWindow[1].slice(5).replace('-', '/')})`,
+          date: stimCd1,
+          title: 'Period expected — Day 1: stop Estradiol & call the office',
           kind: 'action' as const,
-          note: `Call ${CLINIC_PHONE} on Day 1 — the clinic sets the real stim dates.`,
+          note: `${CLINIC_PHONE} — the clinic confirms the real stim dates; injections start Day 2. Enter the real Day 1 in settings when it comes.`,
           isEstimate: true,
         }]),
     {
-      id: 'baseline',
-      date: stimCd2,
-      title: 'Baseline U/S (CD2) + stop Estrace',
-      kind: stimCd1IsActual ? 'fixed' : 'estimate',
-      note: 'Transvaginal scan — must be clear (no cysts) to start the shots.',
-      isEstimate: !stimCd1IsActual,
-    },
-    {
       id: 'stim-start',
       date: stimCd2,
-      title: 'Start Follistim 300 + Menopur 150',
+      title: 'Day 2 — injections start: Follistim 300 + Menopur 150',
       kind: 'med',
       note: 'Every evening (PM), subcutaneous — tiny needle, just under the belly skin.',
       isEstimate: !stimCd1IsActual,
@@ -233,7 +247,8 @@ export function computeCycle(input: CycleInput): CycleResult {
   const milestones = [...unsorted].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const medWindows: MedWindow[] = [
-    { id: 'estrace', label: 'Estrace', start: estraceStart, endExclusive: stimCd2, isEstimate: !surgeIsActual },
+    // Estradiol stops ON Day 1 of the period — last dose is the evening before.
+    { id: 'estrace', label: 'Estradiol 2mg (am + pm)', start: estraceStart, endExclusive: stimCd1, isEstimate: estradiolIsFixed ? !stimCd1IsActual : !surgeIsActual },
     // Sheet shows Follistim + Menopur nightly through trigger day (10 nights).
     { id: 'stims', label: 'Follistim + Menopur (pm)', start: stimCd2, endExclusive: addDays(triggerEstimate, 1), isEstimate: !stimCd1IsActual },
     { id: 'ganirelix', label: 'Ganirelix (am)', start: day5Ultrasound, endExclusive: triggerEstimate, isEstimate: !stimCd1IsActual },

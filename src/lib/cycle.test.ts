@@ -55,7 +55,6 @@ describe('computeCycle — 28-day default (cd1 = 2026-07-05)', () => {
     const byId = Object.fromEntries(r.milestones.map((m) => [m.id, m]));
     expect(byId['surge'].isEstimate).toBe(true);
     expect(byId['estrace-start'].isEstimate).toBe(true);
-    expect(byId['baseline'].isEstimate).toBe(true);
     expect(byId['trigger'].isEstimate).toBe(true);
     expect(byId['retrieval'].isEstimate).toBe(true);
     expect(byId['opk-start'].isEstimate).toBe(false);
@@ -72,10 +71,10 @@ describe('computeCycle — 28-day default (cd1 = 2026-07-05)', () => {
     ]);
     expect(r.milestones.filter((m) => /prenatal|coq10/i.test(m.title))).toHaveLength(0);
   });
-  it('adds the sheet action items: no-peak call, schedule-baseline call, abstinence', () => {
+  it('adds the sheet action items: no-peak call, period-watch, abstinence', () => {
     const byId = Object.fromEntries(r.milestones.map((m) => [m.id, m]));
     expect(byId['opk-no-peak-call'].date).toBe('2026-07-17');
-    expect(byId['schedule-baseline-call'].date).toBe('2026-07-19');
+    expect(byId['period-watch'].date).toBe(r.estraceStart);
     expect(byId['abstinence'].date).toBe(addDays(r.retrievalEstimate, -2));
   });
   it('adds the class-letter items: no-surge blood draw (CD17) + stim-day-4 cutoff', () => {
@@ -106,7 +105,6 @@ describe('computeCycle — actualSurge override', () => {
     const byId = Object.fromEntries(r.milestones.map((m) => [m.id, m]));
     expect(byId['surge'].isEstimate).toBe(false);
     expect(byId['estrace-start'].isEstimate).toBe(false);
-    expect(byId['baseline'].isEstimate).toBe(true);
     expect(byId['trigger'].isEstimate).toBe(true);
   });
 });
@@ -127,9 +125,8 @@ describe('computeCycle — actualStimCd1 override', () => {
     expect(ids).toContain('stim-cd1');
     expect(ids).not.toContain('period-window');
   });
-  it('locks baseline/stims but trigger + retrieval stay monitoring-dependent', () => {
+  it('locks stims but trigger + retrieval stay monitoring-dependent', () => {
     const byId = Object.fromEntries(r.milestones.map((m) => [m.id, m]));
-    expect(byId['baseline'].isEstimate).toBe(false);
     expect(byId['stim-start'].isEstimate).toBe(false);
     expect(byId['day5-us'].isEstimate).toBe(false);
     expect(byId['trigger'].isEstimate).toBe(true);
@@ -151,10 +148,10 @@ describe('computeCycle — non-28-day cycles', () => {
 
 describe('computeCycle — med windows', () => {
   const r = computeCycle(BASE);
-  it('runs Estrace from start until the baseline (stim CD2)', () => {
+  it('runs Estradiol from start until Day 1 of the period (stop day)', () => {
     const w = r.medWindows.find((x) => x.id === 'estrace')!;
     expect(w.start).toBe('2026-07-24');
-    expect(w.endExclusive).toBe('2026-08-05');
+    expect(w.endExclusive).toBe('2026-08-04'); // stimCd1 — she stops ON Day 1
   });
   it('runs stims from CD2 through trigger day (10 nights), Ganirelix from day-5 U/S', () => {
     const stims = r.medWindows.find((x) => x.id === 'stims')!;
@@ -163,5 +160,38 @@ describe('computeCycle — med windows', () => {
     expect(stims.endExclusive).toBe('2026-08-15'); // includes trigger night, per the sheet
     expect(gani.start).toBe('2026-08-09');
     expect(gani.endExclusive).toBe('2026-08-14');
+  });
+});
+
+describe('computeCycle — clinic-fixed estradiol + expected CD1 (7/24 visit)', () => {
+  const r = computeCycle({ ...BASE, estradiolStart: '2026-07-26', expectedNextCd1: '2026-08-03' });
+
+  it('starts Estradiol on the clinic-given date, locked', () => {
+    expect(r.estraceStart).toBe('2026-07-26');
+    const m = r.milestones.find((x) => x.id === 'estrace-start')!;
+    expect(m.isEstimate).toBe(false);
+  });
+  it('expects Day 1 on the clinic estimate; injections Day 2', () => {
+    expect(r.stimCd1).toBe('2026-08-03');
+    expect(r.stimCd2).toBe('2026-08-04');
+    const pw = r.milestones.find((x) => x.id === 'period-window')!;
+    expect(pw.date).toBe('2026-08-03');
+  });
+  it('runs Estradiol until the expected Day 1', () => {
+    const w = r.medWindows.find((x) => x.id === 'estrace')!;
+    expect(w.start).toBe('2026-07-26');
+    expect(w.endExclusive).toBe('2026-08-03');
+  });
+  it('includes the fixed baseline ultrasound (7/31, Sunnyvale) and the period-watch warning', () => {
+    const b = r.milestones.find((x) => x.id === 'baseline-us')!;
+    expect(b.date).toBe('2026-07-31');
+    expect(b.isEstimate).toBe(false);
+    expect(r.milestones.find((x) => x.id === 'period-watch')!.date).toBe('2026-07-26');
+  });
+  it('a real Day 1 overrides the expectation', () => {
+    const r2 = computeCycle({ ...BASE, estradiolStart: '2026-07-26', expectedNextCd1: '2026-08-03', actualStimCd1: '2026-08-05' });
+    expect(r2.stimCd1).toBe('2026-08-05');
+    expect(r2.stimCd2).toBe('2026-08-06');
+    expect(r2.medWindows.find((x) => x.id === 'estrace')!.endExclusive).toBe('2026-08-05');
   });
 });

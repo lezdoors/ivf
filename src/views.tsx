@@ -17,7 +17,7 @@ import { GLOSSARY, TERM_RE, lookupTerm } from './lib/glossary';
 // real next Cycle Day 1 once they're entered on the calendar tab. Nothing here
 // hardcodes protocol dates — everything recomputes when the inputs change.
 const CYCLE_INPUT_KEY = 'ivf-cycle-input';
-const CYCLE_DEFAULTS: CycleInput = { cd1: '2026-07-05', cycleLength: 28 };
+const CYCLE_DEFAULTS: CycleInput = { cd1: '2026-07-05', cycleLength: 28, estradiolStart: '2026-07-26', expectedNextCd1: '2026-08-03' };
 function loadCycleInput(): CycleInput {
   try {
     const raw = localStorage.getItem(CYCLE_INPUT_KEY);
@@ -37,7 +37,7 @@ function cyclePhase(r: CycleResult): string {
   const t = todayISO();
   if (t < r.opkStart) return `Pre-cycle — OPK testing begins ${compact(r.opkStart)}`;
   if (t < r.estraceStart) return 'OPK testing — watching for the LH surge';
-  if (t < r.stimCd1) return `Estrogen priming (estrace) — stim cycle ~${compact(r.stimCd2)}`;
+  if (t < r.stimCd1) return `Estradiol priming (am + pm) — injections ~${compact(r.stimCd2)}`;
   if (t < r.stimCd2) return 'Baseline — stimulation begins on Cycle Day 2';
   if (t < r.triggerEstimate) return `Stimulation · day ${diffDays(t, r.stimCd2) + 1} of stims`;
   if (t < r.retrievalEstimate) return `Trigger window — retrieval ~${compact(r.retrievalEstimate)}`;
@@ -104,7 +104,10 @@ function todayItems(r: CycleResult, appts: AppointmentRow[]): TodayItem[] {
   if (!r.surgeIsActual && t >= r.opkStart && t <= r.estimatedSurge) {
     items.push({ id: 'opk', label: 'OPK test', sub: 'first morning pee — when it turns positive, enter the date on the calendar tab' });
   }
-  if (t >= r.estraceStart && t < r.stimCd2) items.push({ id: 'estrace', label: 'Estrace', sub: 'estrogen priming — daily until the baseline scan' });
+  if (t >= r.estraceStart && t < r.stimCd1) {
+    items.push({ id: 'estrace-am', label: 'Estradiol 2mg — morning', sub: 'with breakfast · until Day 1 of your period' });
+    items.push({ id: 'estrace-pm', label: 'Estradiol 2mg — evening', sub: 'with dinner · until Day 1 of your period' });
+  }
   if (t >= r.day5Ultrasound && t < r.triggerEstimate) items.push({ id: 'ganirelix', label: 'Ganirelix', sub: 'morning, same time each day' });
   if (t >= r.stimCd2 && t <= r.triggerEstimate) items.push({ id: 'stims', label: 'Follistim 300 + Menopur 150', sub: 'evening (PM), subcutaneous' });
   items.push({ id: 'prenatal', label: 'Prenatal vitamin', sub: '400mcg+ folic acid' });
@@ -121,7 +124,8 @@ function todayItems(r: CycleResult, appts: AppointmentRow[]): TodayItem[] {
 type Kind = { bg: string; fg: string; Icon: LucideIcon };
 const KIND: Record<string, Kind> = {
   opk: { bg: 'bg-raspberry-50', fg: 'text-raspberry-600', Icon: Bell },
-  estrace: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
+  'estrace-am': { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
+  'estrace-pm': { bg: 'bg-sage-50', fg: 'text-sage-600', Icon: Moon },
   prenatal: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
   coq10: { bg: 'bg-terracotta-50', fg: 'text-terracotta-600', Icon: Sun },
   stims: { bg: 'bg-sage-50', fg: 'text-sage-600', Icon: Moon },
@@ -458,7 +462,7 @@ export function Monitoring() {
           <Eyebrow className="mb-5">monitoring log</Eyebrow>
           {loading ? <Loading /> : error ? <ErrorNote error={error} /> : rows.length === 0 ? (
             <p className="text-sm leading-relaxed text-taupe-500">
-              nothing here yet — and that's right on schedule. scans begin at the baseline ultrasound (~{compact(computeCycle(loadCycleInput()).stimCd2)}); every one you log will trend here.
+              nothing here yet — and that's right on schedule. scans begin at the baseline ultrasound (7/31, 2:30p); every one you log will trend here.
             </p>
           ) : (
             <div className="-mx-2 overflow-x-auto px-2">
@@ -556,7 +560,7 @@ function CycleGarden({ entries, user }: { entries: JournalRow[]; user: User }) {
   }
   const blooms = [...byDate.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
   const markers = [
-    { date: r.stimCd2, label: 'baseline' },
+    { date: '2026-07-31', label: 'baseline' },
     { date: r.triggerEstimate, label: 'trigger' },
     { date: r.retrievalEstimate, label: 'retrieval' },
   ];
@@ -1143,13 +1147,12 @@ const MILESTONE_MATCH: Record<string, RegExp> = {
   'pgt-class': /pgt/i,
   'consent-signing': /consent/i,
   'estrace-start': /estrace|estradiol/i,
-  'baseline': /baseline/i,
+  'baseline-us': /baseline/i,
   'day5-us': /day.?5|monitoring/i,
   'retrieval': /retrieval/i,
   'trigger': /trigger/i,
   'opk-no-peak-call': /peak/i,
   'no-surge-blood-draw': /blood draw|no.*surge/i,
-  'schedule-baseline-call': /schedule|stanford/i,
 };
 function dedupeAgainstNotion(milestones: Milestone[], appts: AppointmentRow[]): Milestone[] {
   return milestones.filter((m) => {
